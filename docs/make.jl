@@ -8,3 +8,7 @@ makedocs(
         "API"=>"api.md"
     ]
 )
+
+deploydocs(
+    repo = "github.com/byu-cig/BcdiCore.jl.git",
+)
