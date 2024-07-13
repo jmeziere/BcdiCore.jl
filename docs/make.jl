@@ -7,7 +7,13 @@ makedocs(
     ),
     pages = [
         "Main"=>"index.md",
-        "Usage"=>"use.md"
+        "Usage"=>[
+            "Overview"=>overview.md,
+            "Atomic Models"=>atomic.md,
+            "Mesoscale Models"=>meso.md,
+            "Traditional Models"=>trad.md,
+            "Multiscale Modes"=>multi.md
+        ]
     ]
 )
 
