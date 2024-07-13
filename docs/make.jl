@@ -8,11 +8,11 @@ makedocs(
     pages = [
         "Main"=>"index.md",
         "Usage"=>[
-            "Overview"=>overview.md,
-            "Atomic Models"=>atomic.md,
-            "Mesoscale Models"=>meso.md,
-            "Traditional Models"=>trad.md,
-            "Multiscale Modes"=>multi.md
+            "Overview"=>"overview.md",
+            "Atomic Models"=>"atomic.md",
+            "Mesoscale Models"=>"meso.md",
+            "Traditional Models"=>"trad.md",
+            "Multiscale Modes"=>"multi.md"
         ]
     ]
 )
