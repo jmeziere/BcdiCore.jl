@@ -7,8 +7,7 @@ makedocs(
     ),
     pages = [
         "Main"=>"index.md",
-        "Scaling"=>"scaling.md",
-        "API"=>"api.md"
+        "Usage"=>"use.md"
     ]
 )
 
