@@ -1,4 +1,4 @@
-function atomicLikelihoodWithScaling(x, y, z, h, k, l, intens)
+function atomicLikelihoodWithScaling(x, y, z, h, k, l, intens, recSupport)
     diffType = Float64
     if typeof(x[1]) != Float64
         diffType = typeof(x[1])
@@ -13,11 +13,13 @@ function atomicLikelihoodWithScaling(x, y, z, h, k, l, intens)
             recipSpace[i] += exp(-1im * (x[j] * h[i] + y[j] * k[i] + z[j] * l[i]))
         end
     end
+    recipSpace .*= recSupport
+    intens = intens .* recSupport
     c = reduce(+, intens)/mapreduce(abs2, +, recipSpace)
     return mapreduce((i,r) -> c*abs2(r) - LogExpFunctions.xlogy(i,c*abs2(r)), +, intens, recipSpace)/length(intens)
 end
 
-function atomicLikelihoodWithoutScaling(x, y, z, h, k, l, intens)
+function atomicLikelihoodWithoutScaling(x, y, z, h, k, l, intens, recSupport)
     diffType = Float64
     if typeof(x[1]) != Float64
         diffType = typeof(x[1])
@@ -32,10 +34,12 @@ function atomicLikelihoodWithoutScaling(x, y, z, h, k, l, intens)
             recipSpace[i] += exp(-1im * (x[j] * h[i] + y[j] * k[i] + z[j] * l[i]))
         end
     end
+    recipSpace .*= recSupport
+    intens = intens .* recSupport
     return mapreduce((i,r) -> abs2(r) - LogExpFunctions.xlogy(i,abs2(r)), +, intens, recipSpace)/length(intens)
 end
 
-function atomicL2WithScaling(x, y, z, h, k, l, intens)
+function atomicL2WithScaling(x, y, z, h, k, l, intens, recSupport)
     diffType = Float64
     if typeof(x[1]) != Float64
         diffType = typeof(x[1])
@@ -50,11 +54,13 @@ function atomicL2WithScaling(x, y, z, h, k, l, intens)
             recipSpace[i] += exp(-1im * (x[j] * h[i] + y[j] * k[i] + z[j] * l[i]))
         end
     end
-    c = mapreduce((i,r)-> sqrt(i)*abs(r), +, intens, recipSpace)/mapreduce(abs2, +, recipSpace)
-    return mapreduce((i,r) -> (c*abs(r) - sqrt(i))^2, +, intens, recipSpace)/length(intens)
+    absRecipSpace = abs.(recipSpace) .* recSupport
+    sqIntens = sqrt.(intens) .* recSupport
+    c = mapreduce((sqi,absr)-> sqi*absr, +, sqIntens, absRecipSpace)/mapreduce(x -> x^2, +, absRecipSpace)
+    return mapreduce((sqi,absr) -> (c*absr - sqi)^2, +, sqIntens, absRecipSpace)/length(intens)
 end
 
-function atomicL2WithoutScaling(x, y, z, h, k, l, intens)
+function atomicL2WithoutScaling(x, y, z, h, k, l, intens, recSupport)
     diffType = Float64
     if typeof(x[1]) != Float64
         diffType = typeof(x[1])
@@ -69,5 +75,7 @@ function atomicL2WithoutScaling(x, y, z, h, k, l, intens)
             recipSpace[i] += exp(-1im * (x[j] * h[i] + y[j] * k[i] + z[j] * l[i]))
         end
     end
-    return mapreduce((i,r) -> (abs(r) - sqrt(i))^2, +, intens, recipSpace)/length(intens)
+    absRecipSpace = abs.(recipSpace) .* recSupport
+    sqIntens = sqrt.(intens) .* recSupport
+    return mapreduce((sqi,absr) -> (absr - sqi)^2, +, sqIntens, absRecipSpace)/length(intens)
 end

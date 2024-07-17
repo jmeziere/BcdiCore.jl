@@ -1,5 +1,5 @@
-struct AtomicState{T}
-    losstype::String
+struct AtomicState{T,F1,F2}
+    losstype::Int64
     scale::Bool
     intens::CuArray{Int64, 3, CUDA.Mem.DeviceBuffer}
     G::Vector{Float64}
@@ -9,21 +9,72 @@ struct AtomicState{T}
     plan::T
     realSpace::CuArray{ComplexF64, 1, CUDA.Mem.DeviceBuffer}
     recipSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
+    tempSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
+    recSupport::CuArray{Bool, 3, CUDA.Mem.DeviceBuffer}
     working::CuArray{Float64, 3, CUDA.Mem.DeviceBuffer}
     xDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
     yDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
     zDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
+    scalingManyAtomicKernel!::F1
+    scaleThreads::Int64
+    lossManyAtomicKernel!::F2
+    lossThreads::Int64
 
-    function AtomicState(lossType, scale, intens, G, h, k, l)
+    function AtomicState(losstype, scale, intens, G, h, k, l, recSupport)
         plan = NUGpuPlan(size(intens))
         realSpace = CUDA.zeros(ComplexF64, 0)
         recipSpace = CUDA.zeros(ComplexF64, size(intens))
+        tempSpace = CUDA.zeros(ComplexF64, size(intens))
         working = CUDA.zeros(Float64, size(intens))
         xDeriv = CUDA.zeros(Float64, 0)
         yDeriv = CUDA.zeros(Float64, 0)
         zDeriv = CUDA.zeros(Float64, 0)
 
-        new{typeof(plan)}(lossType, scale, intens, G, h, k, l, plan, realSpace, recipSpace, working, xDeriv, yDeriv, zDeriv)
+        intLosstype = -1
+        if losstype == "likelihood"
+            intLosstype = 0
+        elseif losstype == "L2"
+            intLosstype = 1
+        end
+
+        scalingManyAtomicKernel! = @cuda launch=false scalingManyAtomic!(
+            CUDA.zeros(Float64, 1),
+            0,
+            CUDA.zeros(Float64, 1),
+            CUDA.zeros(Float64, 1),
+            CUDA.zeros(Float64, 1),
+            CUDA.zeros(Bool, 1),
+            CUDA.zeros(Int64, 1,1,1),
+            CUDA.zeros(ComplexF64, 1,1,1),
+            CUDA.zeros(Int64, 1,1,1),
+            CUDA.zeros(Int64, 1,1,1),
+            CUDA.zeros(Int64, 1,1,1),
+            CUDA.zeros(Bool, 1,1,1),
+            0.0,  0.0, 0.0
+        )
+        configScaling = launch_configuration(scalingManyAtomicKernel!.fun)
+        scaleThreads = configScaling.threads
+
+        lossManyAtomicKernel! = @cuda launch=false lossManyAtomic!(
+            CUDA.zeros(Float64, 1),
+            0,
+            CUDA.zeros(Float64, 1),
+            CUDA.zeros(Float64, 1),
+            CUDA.zeros(Float64, 1),
+            CUDA.zeros(Bool, 1),
+            CUDA.zeros(Float64, 1),
+            CUDA.zeros(Int64, 1,1,1),
+            CUDA.zeros(ComplexF64, 1,1,1),
+            CUDA.zeros(Int64, 1,1,1),
+            CUDA.zeros(Int64, 1,1,1),
+            CUDA.zeros(Int64, 1,1,1),
+            CUDA.zeros(Bool, 1,1,1),
+            0.0,  0.0, 0.0
+        )
+        configLoss = launch_configuration(scalingManyAtomicKernel!.fun)
+        lossThreads = configLoss.threads
+
+        new{typeof(plan), typeof(scalingManyAtomicKernel!), typeof(lossManyAtomicKernel!)}(intLosstype, scale, intens, G, h, k, l, plan, realSpace, recipSpace, tempSpace, recSupport, working, xDeriv, yDeriv, zDeriv, scalingManyAtomicKernel!, scaleThreads, lossManyAtomicKernel!, lossThreads)
     end
 end
 
@@ -55,12 +106,33 @@ function setpts!(state::AtomicState, x, y, z, getDeriv)
     CUDA.synchronize()
 end
 
-function forwardProp(state::AtomicState)
+function forwardProp(state::AtomicState, saveRecip)
     state.plan * state.realSpace
+    state.plan.recipSpace .+= state.recipSpace
+
+    if saveRecip
+        state.recipSpace .= state.plan.recipSpace
+    end
+end
+
+function slowForwardProp(state::AtomicState, x, y, z, adds, saveRecip)
+    state.plan.recipSpace .= state.recipSpace
+    for i in 1:length(x)
+        state.plan.recipSpace .+= (2 .* adds[i] .- 1) .* exp.(-1im .* (
+            x[i] .* (state.G[1] .+ state.h) .+
+            y[i] .* (state.G[2] .+ state.k) .+
+            z[i] .* (state.G[3] .+ state.l)
+        ))
+    end
+
+    if saveRecip
+        state.recipSpace .= state.plan.recipSpace
+    end
 end
 
 function backProp(state::AtomicState)
     state.plan.tempSpace .= state.plan.recipSpace
+    state.tempSpace .= state.recipSpace
     # Calculate the x derivatives
     state.xDeriv.= 0
     state.recipSpace .= state.working .* (state.h .+ state.G[1]) .* state.plan.tempSpace
@@ -83,44 +155,62 @@ function backProp(state::AtomicState)
     state.zDeriv .-= imag.(state.plan.realSpace) .* real.(state.realSpace)
 
     state.plan.recipSpace .= state.plan.tempSpace
+    state.recipSpace .= state.tempSpace
 end
 
 struct TradState{T}
-    losstype::String
+    losstype::Int64
     scale::Bool
     intens::CuArray{Int64, 3, CUDA.Mem.DeviceBuffer}
     plan::T
     realSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     recipSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
+    tempSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
+    recSupport::CuArray{Bool, 3, CUDA.Mem.DeviceBuffer}
     working::CuArray{Float64, 3, CUDA.Mem.DeviceBuffer}
     deriv::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
 
-    function TradState(losstype, scale, intens, realSpace)
+    function TradState(losstype, scale, realSpace, intens, recSupport)
         plan = UGpuPlan(size(intens))
         recipSpace = CUDA.zeros(ComplexF64, size(intens))
+        tempSpace = CUDA.zeros(ComplexF64, size(intens))
         working = CUDA.zeros(Float64, size(intens))
         deriv = CUDA.zeros(ComplexF64, size(intens))
 
-        new{typeof(plan)}(losstype, scale, intens, plan, realSpace, recipSpace, working, deriv)
+        intLosstype = -1
+        if losstype == "likelihood"
+            intLosstype = 0
+        elseif losstype == "L2"
+            intLosstype = 1
+        end
+
+        new{typeof(plan)}(intLosstype, scale, intens, plan, realSpace, recipSpace, tempSpace, recSupport, working, deriv)
     end
 end
 
-function forwardProp(state::TradState)
+function forwardProp(state::TradState, saveRecip)
     state.plan * state.realSpace
+    state.plan.recipSpace .+= state.recipSpace
+
+    if saveRecip
+        state.recipSpace .= state.plan.recipSpace
+    end
 end
 
 function backProp(state::TradState)
     state.plan.tempSpace .= state.plan.recipSpace
+    state.tempSpace .= state.recipSpace
 
     state.recipSpace .= state.working .* state.plan.tempSpace
     state.plan \ state.recipSpace
     state.deriv .= state.plan.realSpace
 
     state.plan.recipSpace .= state.plan.tempSpace
+    state.recipSpace .= state.tempSpace
 end
 
 struct MesoState{T}
-    losstype::String
+    losstype::Int64
     scale::Bool
     intens::CuArray{Int64, 3, CUDA.Mem.DeviceBuffer}
     G::Vector{Float64}
@@ -131,24 +221,34 @@ struct MesoState{T}
     realSpace::CuArray{ComplexF64, 1, CUDA.Mem.DeviceBuffer}
     rholessRealSpace::CuArray{ComplexF64, 1, CUDA.Mem.DeviceBuffer}
     recipSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
+    tempSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
+    recSupport::CuArray{Bool, 3, CUDA.Mem.DeviceBuffer}
     working::CuArray{Float64, 3, CUDA.Mem.DeviceBuffer}
     rhoDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
     uxDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
     uyDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
     uzDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
 
-    function MesoState(lossType, scale, intens, G, h, k, l)
+    function MesoState(losstype, scale, intens, G, h, k, l, recSupport)
         plan = NUGpuPlan(size(intens))
         realSpace = CUDA.zeros(ComplexF64, 0)
         rholessRealSpace = CUDA.zeros(ComplexF64, 0)
         recipSpace = CUDA.zeros(ComplexF64, size(intens))
+        tempSpace = CUDA.zeros(ComplexF64, size(intens))
         working = CUDA.zeros(Float64, size(intens))
         rhoDeriv = CUDA.zeros(Float64, 0)
         uxDeriv = CUDA.zeros(Float64, 0)
         uyDeriv = CUDA.zeros(Float64, 0)
         uzDeriv = CUDA.zeros(Float64, 0)
 
-        new{typeof(plan)}(lossType, scale, intens, G, h, k, l, plan, realSpace, rholessRealSpace, recipSpace, working, rhoDeriv, uxDeriv, uyDeriv, uzDeriv)
+        intLosstype = -1
+        if losstype == "likelihood"
+            intLosstype = 0
+        elseif losstype == "L2"
+            intLosstype = 1
+        end
+
+        new{typeof(plan)}(intLosstype, scale, intens, G, h, k, l, plan, realSpace, rholessRealSpace, recipSpace, tempSpace, recSupport, working, rhoDeriv, uxDeriv, uyDeriv, uzDeriv)
     end
 end
 
@@ -186,12 +286,18 @@ function setpts!(state::MesoState, x, y, z, rho, ux, uy, uz, getDeriv)
     CUDA.synchronize()
 end
 
-function forwardProp(state::MesoState)
+function forwardProp(state::MesoState, saveRecip)
     state.plan * state.realSpace
+    state.plan.recipSpace .+= state.recipSpace
+
+    if saveRecip
+        state.recipSpace .= state.plan.recipSpace
+    end
 end
 
 function backProp(state::MesoState)
     state.plan.tempSpace .= state.plan.recipSpace
+    state.tempSpace .= state.recipSpace
 
     # Calculate the ux derivatives
     state.rhoDeriv.= 0
@@ -222,10 +328,11 @@ function backProp(state::MesoState)
     state.uzDeriv .-= imag.(state.plan.realSpace) .* real.(state.realSpace)
 
     state.plan.recipSpace .= state.plan.tempSpace
+    state.recipSpace .= state.tempSpace
 end
 
 struct MultiState{T}
-    losstype::String
+    losstype::Int64
     scale::Bool
     intens::CuArray{Int64, 3, CUDA.Mem.DeviceBuffer}
     G::Vector{Float64}
@@ -237,6 +344,8 @@ struct MultiState{T}
     realSpace::CuArray{ComplexF64, 1, CUDA.Mem.DeviceBuffer}
     rholessRealSpace::CuArray{ComplexF64, 1, CUDA.Mem.DeviceBuffer}
     recipSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
+    tempSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
+    recSupport::CuArray{Bool, 3, CUDA.Mem.DeviceBuffer}
     working::CuArray{Float64, 3, CUDA.Mem.DeviceBuffer}
     xDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
     yDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
@@ -246,12 +355,13 @@ struct MultiState{T}
     uyDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
     uzDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
 
-    function MultiState(lossType, scale, intens, G, h, k, l)
+    function MultiState(losstype, scale, intens, G, h, k, l, recSupport)
         plan = NUGpuPlan(size(intens))
         rhoPlan = NUGpuPlan(size(intens))
         realSpace = CUDA.zeros(ComplexF64, 0)
         rholessRealSpace = CUDA.zeros(ComplexF64, 0)
         recipSpace = CUDA.zeros(ComplexF64, size(intens))
+        tempSpace = CUDA.zeros(ComplexF64, size(intens))
         working = CUDA.zeros(Float64, size(intens))
         xDeriv = CUDA.zeros(Float64, 0)
         yDeriv = CUDA.zeros(Float64, 0)
@@ -261,7 +371,14 @@ struct MultiState{T}
         uyDeriv = CUDA.zeros(Float64, 0)
         uzDeriv = CUDA.zeros(Float64, 0)
 
-        new{typeof(plan)}(lossType, scale, intens, G, h, k, l, plan, rhoPlan, realSpace, rholessRealSpace, recipSpace, working, xDeriv, yDeriv, zDeriv, rhoDeriv, uxDeriv, uyDeriv, uzDeriv)
+        intLosstype = -1
+        if losstype == "likelihood"
+            intLosstype = 0
+        elseif losstype == "L2"
+            intLosstype = 1
+        end
+
+        new{typeof(plan)}(intLosstype, scale, intens, G, h, k, l, plan, rhoPlan, realSpace, rholessRealSpace, recipSpace, tempSpace, recSupport, working, xDeriv, yDeriv, zDeriv, rhoDeriv, uxDeriv, uyDeriv, uzDeriv)
     end
 end
 
@@ -315,22 +432,28 @@ function setpts!(state::MultiState, x, y, z, mx, my, mz,  rho, ux, uy, uz, getDe
     CUDA.synchronize()
 end
 
-function forwardProp(state::MultiState)
+function forwardProp(state::MultiState, saveRecip)
     state.plan * state.realSpace
+    state.plan.recipSpace .+= state.recipSpace
+
+    if saveRecip
+        state.recipSpace .= state.plan.recipSpace
+    end
 end
 
 function backProp(state::MultiState)
     nm = length(state.rholessRealSpace)
     state.plan.tempSpace .= state.plan.recipSpace
+    state.tempSpace .= state.recipSpace
 
-    # Calculate the ux derivatives
+    # Calculate the rho derivatives
     state.rhoDeriv.= 0
     state.recipSpace .= state.working .* state.plan.tempSpace
     state.rhoPlan \ state.recipSpace
     state.rhoDeriv .+= real.(state.rhoPlan.realSpace) .* real.(state.rholessRealSpace)
     state.rhoDeriv .+= imag.(state.rhoPlan.realSpace) .* imag.(state.rholessRealSpace)
 
-    # Calculate the ux derivatives
+    # Calculate the x & ux derivatives
     state.xDeriv.= 0
     state.uxDeriv.= 0
     state.recipSpace .= state.working .* (state.h .+ state.G[1]) .* state.plan.tempSpace
@@ -340,7 +463,7 @@ function backProp(state::MultiState)
     @views state.uxDeriv .+= real.(state.plan.realSpace[1:nm]) .* imag.(state.realSpace[1:nm])
     @views state.uxDeriv .-= imag.(state.plan.realSpace[1:nm]) .* real.(state.realSpace[1:nm])
 
-    # Calculate the uy derivatives
+    # Calculate the y & uy derivatives
     state.yDeriv.= 0
     state.uyDeriv.= 0
     state.recipSpace .= state.working .* (state.k .+ state.G[2]) .* state.plan.tempSpace
@@ -350,7 +473,7 @@ function backProp(state::MultiState)
     @views state.uyDeriv .+= real.(state.plan.realSpace[1:nm]) .* imag.(state.realSpace[1:nm])
     @views state.uyDeriv .-= imag.(state.plan.realSpace[1:nm]) .* real.(state.realSpace[1:nm])
 
-    # Calculate the uz derivatives
+    # Calculate the z & uz derivatives
     state.zDeriv.= 0
     state.uzDeriv.= 0
     state.recipSpace .= state.working .* (state.l .+ state.G[3]) .* state.plan.tempSpace
@@ -361,4 +484,5 @@ function backProp(state::MultiState)
     @views state.uzDeriv .-= imag.(state.plan.realSpace[1:nm]) .* real.(state.realSpace[1:nm])
 
     state.plan.recipSpace .= state.plan.tempSpace
+    state.recipSpace .= state.tempSpace
 end

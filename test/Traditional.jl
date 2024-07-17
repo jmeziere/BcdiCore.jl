@@ -1,4 +1,4 @@
-function tradLikelihoodWithScaling(realSpace, intens; printout=false)
+function tradLikelihoodWithScaling(realSpace, intens, recSupport)
     recipSpace = zeros(typeof(realSpace[1]), 4,4,4)
     s1 = size(realSpace,1)
     s2 = size(realSpace,2)
@@ -16,11 +16,13 @@ function tradLikelihoodWithScaling(realSpace, intens; printout=false)
     end
     end
     end
+    recipSpace .*= recSupport
+    intens = intens .* recSupport
     c = reduce(+, intens)/mapreduce(abs2, +, recipSpace)
     return mapreduce((i,r) -> c*abs2(r) - LogExpFunctions.xlogy(i,c*abs2(r)), +, intens, recipSpace)/length(intens)
 end
 
-function tradLikelihoodWithoutScaling(realSpace, intens)
+function tradLikelihoodWithoutScaling(realSpace, intens, recSupport)
     recipSpace = zeros(typeof(realSpace[1]), 4,4,4)
     s1 = size(realSpace,1)
     s2 = size(realSpace,2)
@@ -38,10 +40,12 @@ function tradLikelihoodWithoutScaling(realSpace, intens)
     end
     end
     end
+    recipSpace .*= recSupport
+    intens = intens .* recSupport
     return mapreduce((i,r) -> abs2(r) - LogExpFunctions.xlogy(i,abs2(r)), +, intens, recipSpace)/length(intens)
 end
 
-function tradL2WithScaling(realSpace, intens)
+function tradL2WithScaling(realSpace, intens, recSupport)
     recipSpace = zeros(typeof(realSpace[1]), 4,4,4)
     s1 = size(realSpace,1)
     s2 = size(realSpace,2)
@@ -59,11 +63,13 @@ function tradL2WithScaling(realSpace, intens)
     end
     end
     end
-    c = mapreduce((i,r)-> sqrt(i)*abs(r), +, intens, recipSpace)/mapreduce(abs2, +, recipSpace)
-    return mapreduce((i,r) -> (c*abs(r) - sqrt(i))^2, +, intens, recipSpace)/length(intens)
+    absRecipSpace = abs.(recipSpace) .* recSupport
+    sqIntens = sqrt.(intens) .* recSupport
+    c = mapreduce((sqi,absr)-> sqi*absr, +, sqIntens, absRecipSpace)/mapreduce(x -> x^2, +, absRecipSpace)
+    return mapreduce((sqi,absr) -> (c*absr - sqi)^2, +, sqIntens, absRecipSpace)/length(intens)
 end
 
-function tradL2WithoutScaling(realSpace, intens)
+function tradL2WithoutScaling(realSpace, intens, recSupport)
     recipSpace = zeros(typeof(realSpace[1]), 4,4,4)
     s1 = size(realSpace,1)
     s2 = size(realSpace,2)
@@ -81,5 +87,7 @@ function tradL2WithoutScaling(realSpace, intens)
     end
     end
     end
-    return mapreduce((i,r) -> (abs(r) - sqrt(i))^2, +, intens, recipSpace)/length(intens)
+    absRecipSpace = abs.(recipSpace) .* recSupport
+    sqIntens = sqrt.(intens) .* recSupport
+    return mapreduce((sqi,absr) -> (absr - sqi)^2, +, sqIntens, absRecipSpace)/length(intens)
 end
