@@ -8,7 +8,7 @@ function loss(state, getDeriv, getLoss, saveRecip)
                 mapreduce((rsp, sup) -> sup ? abs2(rsp) : 0.0, +, state.plan.recipSpace, state.recSupport, init=0.0)
         end
         if getDeriv
-            state.working .= 2 .* state.recSupport .* (c .- state.intens ./ abs2.(state.plan.recipSpace))
+            state.working .= 2 .* state.recSupport .* (c .* state.plan.recipSpace .- state.intens .* exp.(1im .* angle.(state.plan.recipSpace)) ./ abs.(state.plan.recipSpace))
             backProp(state)
         end
         if getLoss
@@ -25,7 +25,7 @@ function loss(state, getDeriv, getLoss, saveRecip)
                 mapreduce((rsp,sup) -> sup ? abs2(rsp) : 0.0, +, state.plan.recipSpace, state.recSupport, init=0.0)
         end
         if getDeriv
-            state.working .= 2 .* c .* state.recSupport .* (c .- sqrt.(state.intens) ./ abs.(state.plan.recipSpace))
+            state.working .= 2 .* c .* state.recSupport .* (c .* state.plan.recipSpace .- sqrt.(state.intens) .* exp.(1im .* angle.(state.plan.recipSpace)))
             backProp(state)
         end
         if getLoss

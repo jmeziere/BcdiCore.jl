@@ -11,7 +11,7 @@ struct AtomicState{T,F1,F2}
     recipSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     tempSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     recSupport::CuArray{Bool, 3, CUDA.Mem.DeviceBuffer}
-    working::CuArray{Float64, 3, CUDA.Mem.DeviceBuffer}
+    working::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     xDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
     yDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
     zDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
@@ -25,7 +25,7 @@ struct AtomicState{T,F1,F2}
         realSpace = CUDA.zeros(ComplexF64, 0)
         recipSpace = CUDA.zeros(ComplexF64, size(intens))
         tempSpace = CUDA.zeros(ComplexF64, size(intens))
-        working = CUDA.zeros(Float64, size(intens))
+        working = CUDA.zeros(ComplexF64, size(intens))
         xDeriv = CUDA.zeros(Float64, 0)
         yDeriv = CUDA.zeros(Float64, 0)
         zDeriv = CUDA.zeros(Float64, 0)
@@ -135,21 +135,21 @@ function backProp(state::AtomicState)
     state.tempSpace .= state.recipSpace
     # Calculate the x derivatives
     state.xDeriv.= 0
-    state.recipSpace .= state.working .* (state.h .+ state.G[1]) .* state.plan.tempSpace
+    state.recipSpace .= state.working .* (state.h .+ state.G[1])
     state.plan \ state.recipSpace
     state.xDeriv .+= real.(state.plan.realSpace) .* imag.(state.realSpace)
     state.xDeriv .-= imag.(state.plan.realSpace) .* real.(state.realSpace)
 
     # Calculate the y derivatives
     state.yDeriv.= 0
-    state.recipSpace .= state.working .* (state.k .+ state.G[2]) .* state.plan.tempSpace
+    state.recipSpace .= state.working .* (state.k .+ state.G[2])
     state.plan \ state.recipSpace
     state.yDeriv .+= real.(state.plan.realSpace) .* imag.(state.realSpace)
     state.yDeriv .-= imag.(state.plan.realSpace) .* real.(state.realSpace)
 
     # Calculate the z derivatives
     state.zDeriv.= 0
-    state.recipSpace .= state.working .* (state.l .+ state.G[3]) .* state.plan.tempSpace
+    state.recipSpace .= state.working .* (state.l .+ state.G[3])
     state.plan \ state.recipSpace
     state.zDeriv .+= real.(state.plan.realSpace) .* imag.(state.realSpace)
     state.zDeriv .-= imag.(state.plan.realSpace) .* real.(state.realSpace)
@@ -167,14 +167,14 @@ struct TradState{T}
     recipSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     tempSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     recSupport::CuArray{Bool, 3, CUDA.Mem.DeviceBuffer}
-    working::CuArray{Float64, 3, CUDA.Mem.DeviceBuffer}
+    working::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     deriv::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
 
     function TradState(losstype, scale, realSpace, intens, recSupport)
         plan = UGpuPlan(size(intens))
         recipSpace = CUDA.zeros(ComplexF64, size(intens))
         tempSpace = CUDA.zeros(ComplexF64, size(intens))
-        working = CUDA.zeros(Float64, size(intens))
+        working = CUDA.zeros(ComplexF64, size(intens))
         deriv = CUDA.zeros(ComplexF64, size(intens))
 
         intLosstype = -1
@@ -201,7 +201,7 @@ function backProp(state::TradState)
     state.plan.tempSpace .= state.plan.recipSpace
     state.tempSpace .= state.recipSpace
 
-    state.recipSpace .= state.working .* state.plan.tempSpace
+    state.recipSpace .= state.working
     state.plan \ state.recipSpace
     state.deriv .= state.plan.realSpace
 
@@ -223,7 +223,7 @@ struct MesoState{T}
     recipSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     tempSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     recSupport::CuArray{Bool, 3, CUDA.Mem.DeviceBuffer}
-    working::CuArray{Float64, 3, CUDA.Mem.DeviceBuffer}
+    working::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     rhoDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
     uxDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
     uyDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
@@ -235,7 +235,7 @@ struct MesoState{T}
         rholessRealSpace = CUDA.zeros(ComplexF64, 0)
         recipSpace = CUDA.zeros(ComplexF64, size(intens))
         tempSpace = CUDA.zeros(ComplexF64, size(intens))
-        working = CUDA.zeros(Float64, size(intens))
+        working = CUDA.zeros(ComplexF64, size(intens))
         rhoDeriv = CUDA.zeros(Float64, 0)
         uxDeriv = CUDA.zeros(Float64, 0)
         uyDeriv = CUDA.zeros(Float64, 0)
@@ -301,28 +301,28 @@ function backProp(state::MesoState)
 
     # Calculate the ux derivatives
     state.rhoDeriv.= 0
-    state.recipSpace .= state.working .* state.plan.tempSpace
+    state.recipSpace .= state.working
     state.plan \ state.recipSpace
     state.rhoDeriv .+= real.(state.plan.realSpace) .* real.(state.rholessRealSpace)
     state.rhoDeriv .+= imag.(state.plan.realSpace) .* imag.(state.rholessRealSpace)
 
     # Calculate the ux derivatives
     state.uxDeriv.= 0
-    state.recipSpace .= state.working .* (state.h .+ state.G[1]) .* state.plan.tempSpace
+    state.recipSpace .= state.working .* (state.h .+ state.G[1])
     state.plan \ state.recipSpace
     state.uxDeriv .+= real.(state.plan.realSpace) .* imag.(state.realSpace)
     state.uxDeriv .-= imag.(state.plan.realSpace) .* real.(state.realSpace)
 
     # Calculate the uy derivatives
     state.uyDeriv.= 0
-    state.recipSpace .= state.working .* (state.k .+ state.G[2]) .* state.plan.tempSpace
+    state.recipSpace .= state.working .* (state.k .+ state.G[2])
     state.plan \ state.recipSpace
     state.uyDeriv .+= real.(state.plan.realSpace) .* imag.(state.realSpace)
     state.uyDeriv .-= imag.(state.plan.realSpace) .* real.(state.realSpace)
 
     # Calculate the uz derivatives
     state.uzDeriv.= 0
-    state.recipSpace .= state.working .* (state.l .+ state.G[3]) .* state.plan.tempSpace
+    state.recipSpace .= state.working .* (state.l .+ state.G[3])
     state.plan \ state.recipSpace
     state.uzDeriv .+= real.(state.plan.realSpace) .* imag.(state.realSpace)
     state.uzDeriv .-= imag.(state.plan.realSpace) .* real.(state.realSpace)
@@ -346,7 +346,7 @@ struct MultiState{T}
     recipSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     tempSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     recSupport::CuArray{Bool, 3, CUDA.Mem.DeviceBuffer}
-    working::CuArray{Float64, 3, CUDA.Mem.DeviceBuffer}
+    working::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     xDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
     yDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
     zDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
@@ -362,7 +362,7 @@ struct MultiState{T}
         rholessRealSpace = CUDA.zeros(ComplexF64, 0)
         recipSpace = CUDA.zeros(ComplexF64, size(intens))
         tempSpace = CUDA.zeros(ComplexF64, size(intens))
-        working = CUDA.zeros(Float64, size(intens))
+        working = CUDA.zeros(ComplexF64, size(intens))
         xDeriv = CUDA.zeros(Float64, 0)
         yDeriv = CUDA.zeros(Float64, 0)
         zDeriv = CUDA.zeros(Float64, 0)
@@ -448,7 +448,7 @@ function backProp(state::MultiState)
 
     # Calculate the rho derivatives
     state.rhoDeriv.= 0
-    state.recipSpace .= state.working .* state.plan.tempSpace
+    state.recipSpace .= state.working
     state.rhoPlan \ state.recipSpace
     state.rhoDeriv .+= real.(state.rhoPlan.realSpace) .* real.(state.rholessRealSpace)
     state.rhoDeriv .+= imag.(state.rhoPlan.realSpace) .* imag.(state.rholessRealSpace)
@@ -456,7 +456,7 @@ function backProp(state::MultiState)
     # Calculate the x & ux derivatives
     state.xDeriv.= 0
     state.uxDeriv.= 0
-    state.recipSpace .= state.working .* (state.h .+ state.G[1]) .* state.plan.tempSpace
+    state.recipSpace .= state.working .* (state.h .+ state.G[1])
     state.plan \ state.recipSpace
     @views state.xDeriv .+= real.(state.plan.realSpace[nm+1:end]) .* imag.(state.realSpace[nm+1:end])
     @views state.xDeriv .-= imag.(state.plan.realSpace[nm+1:end]) .* real.(state.realSpace[nm+1:end])
@@ -466,7 +466,7 @@ function backProp(state::MultiState)
     # Calculate the y & uy derivatives
     state.yDeriv.= 0
     state.uyDeriv.= 0
-    state.recipSpace .= state.working .* (state.k .+ state.G[2]) .* state.plan.tempSpace
+    state.recipSpace .= state.working .* (state.k .+ state.G[2])
     state.plan \ state.recipSpace
     @views state.yDeriv .+= real.(state.plan.realSpace[nm+1:end]) .* imag.(state.realSpace[nm+1:end])
     @views state.yDeriv .-= imag.(state.plan.realSpace[nm+1:end]) .* real.(state.realSpace[nm+1:end])
@@ -476,7 +476,7 @@ function backProp(state::MultiState)
     # Calculate the z & uz derivatives
     state.zDeriv.= 0
     state.uzDeriv.= 0
-    state.recipSpace .= state.working .* (state.l .+ state.G[3]) .* state.plan.tempSpace
+    state.recipSpace .= state.working .* (state.l .+ state.G[3])
     state.plan \ state.recipSpace
     @views state.zDeriv .+= real.(state.plan.realSpace[nm+1:end]) .* imag.(state.realSpace[nm+1:end])
     @views state.zDeriv .-= imag.(state.plan.realSpace[nm+1:end]) .* real.(state.realSpace[nm+1:end])

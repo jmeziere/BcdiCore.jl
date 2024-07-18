@@ -12,6 +12,6 @@ Currently, this entire package must be run with access to GPUs. This may change 
 
 Currently, BcdiCore.jl is not registered in the Julia general registry. BcdiCore.jl can be installed by running in the REPL package manager (```]```):
 
-```add git@github.com:byu-cig/BcdiCore.jl.git```
+```add https://github.com/byu-cig/BcdiCore.jl.git```
 
 
