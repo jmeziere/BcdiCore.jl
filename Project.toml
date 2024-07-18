@@ -1,7 +1,7 @@
 name = "BcdiCore"
 uuid = "72eb6a3e-ca63-4742-b260-85b05ca6d9e4"
 authors = ["Jason Meziere"]
-version = "1.0.0-DEV"
+version = "0.0.1"
 
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
