@@ -92,18 +92,8 @@ function setpts!(state::AtomicState, x, y, z, getDeriv)
         resize!(state.yDeriv, length(x))
         resize!(state.zDeriv, length(x))
     end
-    CUDA.synchronize()
-    state.plan.forPlan.setpts(
-        DLPack.share(x, state.plan.cupy.from_dlpack),
-        DLPack.share(y, state.plan.cupy.from_dlpack),
-        DLPack.share(z, state.plan.cupy.from_dlpack)
-    )
-    state.plan.revPlan.setpts(
-        DLPack.share(x, state.plan.cupy.from_dlpack),
-        DLPack.share(y, state.plan.cupy.from_dlpack),
-        DLPack.share(z, state.plan.cupy.from_dlpack)
-    )
-    CUDA.synchronize()
+    FINUFFT.cufinufft_setpts!(state.plan.forPlan, x, y, z)
+    FINUFFT.cufinufft_setpts!(state.plan.revPlan, x, y, z)
 end
 
 function forwardProp(state::AtomicState, saveRecip)
@@ -165,7 +155,6 @@ struct TradState{T}
     plan::T
     realSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     recipSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
-    tempSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     recSupport::CuArray{Bool, 3, CUDA.Mem.DeviceBuffer}
     working::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     deriv::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
@@ -173,7 +162,6 @@ struct TradState{T}
     function TradState(losstype, scale, realSpace, intens, recSupport)
         plan = UGpuPlan(size(intens))
         recipSpace = CUDA.zeros(ComplexF64, size(intens))
-        tempSpace = CUDA.zeros(ComplexF64, size(intens))
         working = CUDA.zeros(ComplexF64, size(intens))
         deriv = CUDA.zeros(ComplexF64, size(intens))
 
@@ -184,7 +172,12 @@ struct TradState{T}
             intLosstype = 1
         end
 
-        new{typeof(plan)}(intLosstype, scale, intens, plan, realSpace, recipSpace, tempSpace, recSupport, working, deriv)
+        new{typeof(plan)}(intLosstype, scale, intens, plan, realSpace, recipSpace, recSupport, working, deriv)
+    end
+
+    function TradState(intLosstype, scale, intens, plan, realSpace, recSupport, working, deriv)
+        recipSpace = CUDA.zeros(ComplexF64, size(intens))
+        new{typeof(plan)}(intLosstype, scale, intens, plan, realSpace, recipSpace, recSupport, working, deriv)
     end
 end
 
@@ -199,14 +192,11 @@ end
 
 function backProp(state::TradState)
     state.plan.tempSpace .= state.plan.recipSpace
-    state.tempSpace .= state.recipSpace
 
-    state.recipSpace .= state.working
-    state.plan \ state.recipSpace
+    state.plan \ state.working
     state.deriv .= state.plan.realSpace
 
     state.plan.recipSpace .= state.plan.tempSpace
-    state.recipSpace .= state.tempSpace
 end
 
 struct MesoState{T}
@@ -272,18 +262,9 @@ function setpts!(state::MesoState, x, y, z, rho, ux, uy, uz, getDeriv)
     mesoX = x .+ ux
     mesoY = y .+ uy
     mesoZ = z .+ uz
-    CUDA.synchronize()
-    state.plan.forPlan.setpts(
-        DLPack.share(mesoX, state.plan.cupy.from_dlpack),
-        DLPack.share(mesoY, state.plan.cupy.from_dlpack),
-        DLPack.share(mesoZ, state.plan.cupy.from_dlpack)
-    )
-    state.plan.revPlan.setpts(
-        DLPack.share(mesoX, state.plan.cupy.from_dlpack),
-        DLPack.share(mesoY, state.plan.cupy.from_dlpack),
-        DLPack.share(mesoZ, state.plan.cupy.from_dlpack)
-    )
-    CUDA.synchronize()
+    
+    FINUFFT.cufinufft_setpts!(state.plan.forPlan, mesoX, mesoY, mesoZ)
+    FINUFFT.cufinufft_setpts!(state.plan.revPlan, mesoX, mesoY, mesoZ)
 end
 
 function forwardProp(state::MesoState, saveRecip)
@@ -413,23 +394,8 @@ function setpts!(state::MultiState, x, y, z, mx, my, mz,  rho, ux, uy, uz, getDe
     mesoX = mx .+ ux
     mesoY = my .+ uy
     mesoZ = mz .+ uz
-    CUDA.synchronize()
-    state.plan.forPlan.setpts(
-        DLPack.share(fullX, state.plan.cupy.from_dlpack),
-        DLPack.share(fullY, state.plan.cupy.from_dlpack),
-        DLPack.share(fullZ, state.plan.cupy.from_dlpack)
-    )
-    state.plan.revPlan.setpts(
-        DLPack.share(fullX, state.plan.cupy.from_dlpack),
-        DLPack.share(fullY, state.plan.cupy.from_dlpack),
-        DLPack.share(fullZ, state.plan.cupy.from_dlpack)
-    )
-    state.rhoPlan.revPlan.setpts(
-        DLPack.share(mesoX, state.plan.cupy.from_dlpack),
-        DLPack.share(mesoY, state.plan.cupy.from_dlpack),
-        DLPack.share(mesoZ, state.plan.cupy.from_dlpack)
-    )
-    CUDA.synchronize()
+    FINUFFT.cufinufft_setpts!(state.plan.forPlan, fullX, fullY, fullZ)
+    FINUFFT.cufinufft_setpts!(state.plan.revPlan, mesoX, mesoY, mesoZ)
 end
 
 function forwardProp(state::MultiState, saveRecip)
