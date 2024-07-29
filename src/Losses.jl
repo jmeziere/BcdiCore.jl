@@ -14,7 +14,7 @@ function loss(state, getDeriv, getLoss, saveRecip)
         if getLoss
             state.plan.tempSpace .= sqrt(c) .* state.plan.recipSpace
             return mapreduce(
-                (i,rsp,sup) -> sup ? abs2(rsp) - LogExpFunctions.xlogy(i, abs2(rsp)) : 0.0, +, 
+                (i,rsp,sup) -> sup ? abs2(rsp) - LogExpFunctions.xlogy(i, abs2(rsp)) - i + LogExpFunctionss.xlogx(i) : 0.0, +, 
                 state.intens, state.plan.tempSpace, state.recSupport
             )/length(state.recipSpace)
         end
@@ -50,7 +50,7 @@ function emptyLoss(state)
         end
         state.plan.tempSpace .= sqrt(c) .* state.plan.recipSpace
         return mapreduce(
-            (i,rsp,sup) -> sup ? abs2(rsp) - LogExpFunctions.xlogy(i, abs2(rsp)) : 0.0, +, 
+            (i,rsp,sup) -> sup ? abs2(rsp) - LogExpFunctions.xlogy(i, abs2(rsp))  - i + LogExpFunctionss.xlogx(i) : 0.0, +, 
             state.intens, state.plan.tempSpace, state.recSupport
         )/length(state.recipSpace)
     elseif state.losstype == 1

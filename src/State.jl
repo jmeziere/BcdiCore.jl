@@ -246,6 +246,12 @@ function setpts!(state::MesoState, x, y, z, rho, ux, uy, uz, getDeriv)
     if maximum(x+ux) > 2*pi || minimum(x+ux) < 0 ||
        maximum(y+uy) > 2*pi || minimum(y+uy) < 0 ||
        maximum(z+uz) > 2*pi || minimum(z+uz) < 0
+        println(maximum(x+ux))
+        println(maximum(y+uy))
+        println(maximum(z+uz))
+        println(minimum(x+ux))
+        println(minimum(y+uy))
+        println(minimum(z+uz))
         @warn "Positions are not between 0 and 2π, these need to be scaled."
     end
     resize!(state.rholessRealSpace, length(x))
