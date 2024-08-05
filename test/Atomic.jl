@@ -16,7 +16,7 @@ function atomicLikelihoodWithScaling(x, y, z, h, k, l, intens, recSupport)
     recipSpace .*= recSupport
     intens = intens .* recSupport
     c = reduce(+, intens)/mapreduce(abs2, +, recipSpace)
-    return mapreduce((i,r) -> c*abs2(r) - LogExpFunctions.xlogy(i,c*abs2(r)), +, intens, recipSpace)/length(intens)
+    return mapreduce((i,r) -> c*abs2(r) - LogExpFunctions.xlogy(i,c*abs2(r)) - i + LogExpFunctions.xlogx(i), +, intens, recipSpace)/length(intens)
 end
 
 function atomicLikelihoodWithoutScaling(x, y, z, h, k, l, intens, recSupport)
@@ -36,7 +36,7 @@ function atomicLikelihoodWithoutScaling(x, y, z, h, k, l, intens, recSupport)
     end
     recipSpace .*= recSupport
     intens = intens .* recSupport
-    return mapreduce((i,r) -> abs2(r) - LogExpFunctions.xlogy(i,abs2(r)), +, intens, recipSpace)/length(intens)
+    return mapreduce((i,r) -> abs2(r) - LogExpFunctions.xlogy(i,abs2(r)) - i + LogExpFunctions.xlogx(i), +, intens, recipSpace)/length(intens)
 end
 
 function atomicL2WithScaling(x, y, z, h, k, l, intens, recSupport)

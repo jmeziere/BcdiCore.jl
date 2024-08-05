@@ -19,7 +19,7 @@ function tradLikelihoodWithScaling(realSpace, intens, recSupport)
     recipSpace .*= recSupport
     intens = intens .* recSupport
     c = reduce(+, intens)/mapreduce(abs2, +, recipSpace)
-    return mapreduce((i,r) -> c*abs2(r) - LogExpFunctions.xlogy(i,c*abs2(r)), +, intens, recipSpace)/length(intens)
+    return mapreduce((i,r) -> c*abs2(r) - LogExpFunctions.xlogy(i,c*abs2(r)) - i + LogExpFunctions.xlogx(i), +, intens, recipSpace)/length(intens)
 end
 
 function tradLikelihoodWithoutScaling(realSpace, intens, recSupport)
@@ -42,7 +42,7 @@ function tradLikelihoodWithoutScaling(realSpace, intens, recSupport)
     end
     recipSpace .*= recSupport
     intens = intens .* recSupport
-    return mapreduce((i,r) -> abs2(r) - LogExpFunctions.xlogy(i,abs2(r)), +, intens, recipSpace)/length(intens)
+    return mapreduce((i,r) -> abs2(r) - LogExpFunctions.xlogy(i,abs2(r)) - i + LogExpFunctions.xlogx(i), +, intens, recipSpace)/length(intens)
 end
 
 function tradL2WithScaling(realSpace, intens, recSupport)

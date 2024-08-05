@@ -14,8 +14,8 @@ function loss(state, getDeriv, getLoss, saveRecip)
         if getLoss
             state.plan.tempSpace .= sqrt(c) .* state.plan.recipSpace
             return mapreduce(
-                (i,rsp,sup) -> sup ? abs2(rsp) - LogExpFunctions.xlogy(i, abs2(rsp)) - i + LogExpFunctionss.xlogx(i) : 0.0, +, 
-                state.intens, state.plan.tempSpace, state.recSupport
+                (i,rsp,sup) -> sup ? abs2(rsp) - LogExpFunctions.xlogy(i, abs2(rsp)) - i + LogExpFunctions.xlogx(i) : 0.0, +, 
+                state.intens, state.plan.tempSpace, state.recSupport, init = 0.0
             )/length(state.recipSpace)
         end
     elseif state.losstype == 1
@@ -50,8 +50,8 @@ function emptyLoss(state)
         end
         state.plan.tempSpace .= sqrt(c) .* state.plan.recipSpace
         return mapreduce(
-            (i,rsp,sup) -> sup ? abs2(rsp) - LogExpFunctions.xlogy(i, abs2(rsp))  - i + LogExpFunctionss.xlogx(i) : 0.0, +, 
-            state.intens, state.plan.tempSpace, state.recSupport
+            (i,rsp,sup) -> sup ? abs2(rsp) - LogExpFunctions.xlogy(i, abs2(rsp)) - i + LogExpFunctions.xlogx(i) : 0.0, +, 
+            state.intens, state.plan.tempSpace, state.recSupport, init = 0.0
         )/length(state.recipSpace)
     elseif state.losstype == 1
         c = 1.0
@@ -82,12 +82,14 @@ function lossManyAtomic!(losses, losstype, x, y, z, adds, scalings, intens, reci
             ))
 
             if losstype == 0
-                losses[i] += scalings[i]*abs2(rsp) - LogExpFunctions.xlogy(intens[j],scalings[i]*abs2(rsp))
+                losses[i] += (
+                    scalings[i]*abs2(rsp) - LogExpFunctions.xlogy(intens[j],scalings[i]*abs2(rsp)) -
+                    intens[j] + LogExpFunctions.xlogx(intens[j])
+                )/length(intens)
             elseif losstype == 1
-                losses[i] += (scalings[i]*abs(rsp) - sqrt(intens[j]))^2
+                losses[i] += ((scalings[i]*abs(rsp) - sqrt(intens[j]))^2)/length(intens)
             end
         end
-        losses[i] /= length(intens)
     end
 end
 
@@ -119,8 +121,10 @@ function scalingManyAtomic!(scalings, losstype, x, y, z, adds, intens, recipSpac
     end
 end
 
-function lossManyAtomic!(losses, state, x, y, z, adds)
-    losses .= 0
+function lossManyAtomic!(losses, state, x, y, z, adds, addLoss)
+    if !addLoss
+        losses .= 0
+    end
     scalings = CUDA.ones(Float64, length(x))
 
     if state.scale

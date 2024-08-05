@@ -27,7 +27,7 @@ function multiLikelihoodWithScaling(x, y, z, mx, my, mz, rho, ux, uy, uz, h, k, 
     recipSpace .*= recSupport
     intens = intens .* recSupport
     c = reduce(+, intens)/mapreduce(abs2, +, recipSpace)
-    return mapreduce((i,r) -> c*abs2(r) - LogExpFunctions.xlogy(i,c*abs2(r)), +, intens, recipSpace)/length(intens)
+    return mapreduce((i,r) -> c*abs2(r) - LogExpFunctions.xlogy(i,c*abs2(r)) - i + LogExpFunctions.xlogx(i), +, intens, recipSpace)/length(intens)
 end
 
 function multiLikelihoodWithoutScaling(x, y, z, mx, my, mz, rho, ux, uy, uz, h, k, l, hp, kp, lp, intens, recSupport)
@@ -58,7 +58,7 @@ function multiLikelihoodWithoutScaling(x, y, z, mx, my, mz, rho, ux, uy, uz, h, 
     end
     recipSpace .*= recSupport
     intens = intens .* recSupport
-    return mapreduce((i,r) -> abs2(r) - LogExpFunctions.xlogy(i,abs2(r)), +, intens, recipSpace)/length(intens)
+    return mapreduce((i,r) -> abs2(r) - LogExpFunctions.xlogy(i,abs2(r)) - i + LogExpFunctions.xlogx(i), +, intens, recipSpace)/length(intens)
 end
 
 function multiL2WithScaling(x, y, z, mx, my, mz, rho, ux, uy, uz, h, k, l, hp, kp, lp, intens, recSupport)

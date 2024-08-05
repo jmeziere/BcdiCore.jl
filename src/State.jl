@@ -108,6 +108,9 @@ end
 function slowForwardProp(state::AtomicState, x, y, z, adds, saveRecip)
     state.plan.recipSpace .= state.recipSpace
     for i in 1:length(x)
+        if isnan(x[i])
+            continue
+        end
         state.plan.recipSpace .+= (2 .* adds[i] .- 1) .* exp.(-1im .* (
             x[i] .* (state.G[1] .+ state.h) .+
             y[i] .* (state.G[2] .+ state.k) .+
@@ -383,7 +386,7 @@ function setpts!(state::MultiState, x, y, z, mx, my, mz,  rho, ux, uy, uz, getDe
     state.rholessRealSpace .= exp.(-1im .* (state.G[1] .* ux .+ state.G[2] .* uy .+ state.G[3] .* uz))
     state.realSpace[1:length(mx)] .= rho .* state.rholessRealSpace
     state.realSpace[length(mx)+1:end] .= exp.(-1im .* (state.G[1] .* x .+ state.G[2] .* y .+ state.G[3] .* z))
-    resize!(state.rhoPlan.realSpace, length(x))
+    resize!(state.rhoPlan.realSpace, length(mx))
     resize!(state.plan.realSpace, length(x)+length(mx))
     if getDeriv
         resize!(state.xDeriv, length(x))
@@ -401,7 +404,8 @@ function setpts!(state::MultiState, x, y, z, mx, my, mz,  rho, ux, uy, uz, getDe
     mesoY = my .+ uy
     mesoZ = mz .+ uz
     FINUFFT.cufinufft_setpts!(state.plan.forPlan, fullX, fullY, fullZ)
-    FINUFFT.cufinufft_setpts!(state.plan.revPlan, mesoX, mesoY, mesoZ)
+    FINUFFT.cufinufft_setpts!(state.plan.revPlan, fullX, fullY, fullZ)
+    FINUFFT.cufinufft_setpts!(state.rhoPlan.revPlan, mesoX, mesoY, mesoZ)
 end
 
 function forwardProp(state::MultiState, saveRecip)

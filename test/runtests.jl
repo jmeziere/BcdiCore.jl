@@ -70,7 +70,7 @@ include("Multi.jl")
         for i in 1:length(manyX)
             losses[i] = atomicLikelihoodWithScaling(vcat(x,[manyX[i]]), vcat(y,[manyY[i]]), vcat(z,[manyZ[i]]), h.+G[1], k.+G[2], l.+G[3], intens, recSupport)
         end
-        BcdiCore.lossManyAtomic!(cuLosses, state, cuManyX, cuManyY, cuManyZ, cuAdds)
+        BcdiCore.lossManyAtomic!(cuLosses, state, cuManyX, cuManyY, cuManyZ, cuAdds, false)
 
         @test isapprox(testee, tester, rtol=1e-6)
         @test all(isapprox.(Array(state.xDeriv), xDeriv, rtol=1e-6))
@@ -97,7 +97,7 @@ include("Multi.jl")
         for i in 1:length(manyX)
             losses[i] = atomicLikelihoodWithoutScaling(vcat(x,[manyX[i]]), vcat(y,[manyY[i]]), vcat(z,[manyZ[i]]), h.+G[1], k.+G[2], l.+G[3], intens, recSupport)
         end
-        BcdiCore.lossManyAtomic!(cuLosses, state, cuManyX, cuManyY, cuManyZ, cuAdds)
+        BcdiCore.lossManyAtomic!(cuLosses, state, cuManyX, cuManyY, cuManyZ, cuAdds, false)
 
         @test isapprox(testee, tester, rtol=1e-6)
         @test all(isapprox.(Array(state.xDeriv), xDeriv, rtol=1e-6))
@@ -124,7 +124,7 @@ include("Multi.jl")
         for i in 1:length(manyX)
             losses[i] = atomicL2WithScaling(vcat(x,[manyX[i]]), vcat(y,[manyY[i]]), vcat(z,[manyZ[i]]), h.+G[1], k.+G[2], l.+G[3], intens, recSupport)
         end
-        BcdiCore.lossManyAtomic!(cuLosses, state, cuManyX, cuManyY, cuManyZ, cuAdds)
+        BcdiCore.lossManyAtomic!(cuLosses, state, cuManyX, cuManyY, cuManyZ, cuAdds, false)
 
         @test isapprox(testee, tester, rtol=1e-6)
         @test all(isapprox.(Array(state.xDeriv), xDeriv, rtol=1e-6))
@@ -151,7 +151,7 @@ include("Multi.jl")
         for i in 1:length(manyX)
             losses[i] = atomicL2WithoutScaling(vcat(x,[manyX[i]]), vcat(y,[manyY[i]]), vcat(z,[manyZ[i]]), h.+G[1], k.+G[2], l.+G[3], intens, recSupport)
         end
-        BcdiCore.lossManyAtomic!(cuLosses, state, cuManyX, cuManyY, cuManyZ, cuAdds)
+        BcdiCore.lossManyAtomic!(cuLosses, state, cuManyX, cuManyY, cuManyZ, cuAdds, false)
 
         @test isapprox(testee, tester, rtol=1e-6)
         @test all(isapprox.(Array(state.xDeriv), xDeriv, rtol=1e-6))
