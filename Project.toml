@@ -10,6 +10,9 @@ LogExpFunctions = "2ab3a3ac-af41-5b50-aa03-7779005ae688"
 
 [compat]
 julia = "1.10.0"
+CUDA = "5.4.3"
+FINUFFT = "3.2.0"
+LogExpFunctions = "0.3.28"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
