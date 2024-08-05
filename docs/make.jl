@@ -18,5 +18,5 @@ makedocs(
 )
 
 deploydocs(
-    repo = "github.com/byu-cig/BcdiCore.jl.git",
+    repo = "github.com/byu-cxi/BcdiCore.jl.git",
 )
