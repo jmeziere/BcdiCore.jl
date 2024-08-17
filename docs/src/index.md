@@ -15,3 +15,5 @@ The BYU-CXI research group maintains a suite of Julia packages to solve the Brag
 - BcdiAtomic.jl is an upcoming BCDI package that implements a BCDI algorithm that solves at the atomic scale.
 
 - BcdiMulti.jl is an upcoming BCDI package that implements a multiscale BCDI algorithm that solves at both the mesoscale and the atomic scale.
+
+- BcdiSimulate.jl is an upcoming BCDI package that simulates the BCDI problem. Currently, this is only implimented at the atomic scale.
