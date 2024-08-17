@@ -6,7 +6,8 @@ makedocs(
         prettyurls = get(ENV, "CI", nothing) == "true"
     ),
     pages = [
-        "Main"=>"index.md",
+        "BCDI"=>"index.md",
+        "BcdiCore"=>"main.md",
         "Usage"=>[
             "Overview"=>"use/overview.md",
             "Atomic Models"=>"use/atomic.md",
