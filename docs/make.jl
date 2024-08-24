@@ -1,4 +1,6 @@
-using Documenter, BcdiCore
+using Documenter, DocumenterCitations, BcdiCore
+
+bib = CitationBibliography(joinpath(@__DIR__, "src", "refs.bib"))
 
 makedocs(
     sitename="BcdiCore.jl",
@@ -14,7 +16,8 @@ makedocs(
             "Traditional Models"=>"use/trad.md",
             "Multiscale Modes"=>"use/multi.md"
         ]
-    ]
+    ],
+    plugins = [bib]
 )
 
 deploydocs(
