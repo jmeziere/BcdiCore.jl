@@ -72,11 +72,11 @@ include("Multi.jl")
         end
         BcdiCore.lossManyAtomic!(cuLosses, state, cuManyX, cuManyY, cuManyZ, cuAdds, false)
 
-        @test isapprox(testee, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(state.xDeriv), xDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.yDeriv), yDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.zDeriv), zDeriv, rtol=1e-6))
-        @test isapprox(testee2, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee2[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(cuLosses), losses, rtol=1e-6))
     end
 
@@ -99,11 +99,11 @@ include("Multi.jl")
         end
         BcdiCore.lossManyAtomic!(cuLosses, state, cuManyX, cuManyY, cuManyZ, cuAdds, false)
 
-        @test isapprox(testee, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(state.xDeriv), xDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.yDeriv), yDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.zDeriv), zDeriv, rtol=1e-6))
-        @test isapprox(testee2, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee2[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(cuLosses), losses, rtol=1e-6))
     end
 
@@ -126,11 +126,11 @@ include("Multi.jl")
         end
         BcdiCore.lossManyAtomic!(cuLosses, state, cuManyX, cuManyY, cuManyZ, cuAdds, false)
 
-        @test isapprox(testee, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(state.xDeriv), xDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.yDeriv), yDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.zDeriv), zDeriv, rtol=1e-6))
-        @test isapprox(testee2, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee2[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(cuLosses), losses, rtol=1e-6))
     end
 
@@ -153,11 +153,11 @@ include("Multi.jl")
         end
         BcdiCore.lossManyAtomic!(cuLosses, state, cuManyX, cuManyY, cuManyZ, cuAdds, false)
 
-        @test isapprox(testee, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(state.xDeriv), xDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.yDeriv), yDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.zDeriv), zDeriv, rtol=1e-6))
-        @test isapprox(testee2, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee2[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(cuLosses), losses, rtol=1e-6))
     end
 
@@ -175,7 +175,7 @@ include("Multi.jl")
         state = BcdiCore.TradState("likelihood", true, cuRealSpace, cuIntens, cuRecSupport)
         testee = BcdiCore.loss(state, true, true, false)
 
-        @test isapprox(testee, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(real.(state.deriv)), rDeriv, rtol=1e-6))
         @test all(isapprox.(Array(imag.(state.deriv)), iDeriv, rtol=1e-6))
     end
@@ -189,7 +189,7 @@ include("Multi.jl")
         state = BcdiCore.TradState("likelihood", false, cuRealSpace, cuIntens, cuRecSupport)
         testee = BcdiCore.loss(state, true, true, false)
 
-        @test isapprox(testee, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(real.(state.deriv)), rDeriv, rtol=1e-6))
         @test all(isapprox.(Array(imag.(state.deriv)), iDeriv, rtol=1e-6))
     end
@@ -203,7 +203,7 @@ include("Multi.jl")
         state = BcdiCore.TradState("L2", true, cuRealSpace, cuIntens, cuRecSupport)
         testee = BcdiCore.loss(state, true, true, false)
 
-        @test isapprox(testee, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(real.(state.deriv)), rDeriv, rtol=1e-6))
         @test all(isapprox.(Array(imag.(state.deriv)), iDeriv, rtol=1e-6))
     end
@@ -217,7 +217,7 @@ include("Multi.jl")
         state = BcdiCore.TradState("L2", false, cuRealSpace, cuIntens, cuRecSupport)
         testee = BcdiCore.loss(state, true, true, false)
 
-        @test isapprox(testee, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(real.(state.deriv)), rDeriv, rtol=1e-6))
         @test all(isapprox.(Array(imag.(state.deriv)), iDeriv, rtol=1e-6))
     end
@@ -245,7 +245,7 @@ include("Multi.jl")
         BcdiCore.setpts!(state, cuX, cuY, cuZ, cuRho, cuUx, cuUy, cuUz, true)
         testee = BcdiCore.loss(state, true, true, false)
 
-        @test isapprox(testee, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(state.rhoDeriv), rhoDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.uxDeriv), uxDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.uyDeriv), uyDeriv, rtol=1e-6))
@@ -264,7 +264,7 @@ include("Multi.jl")
         BcdiCore.setpts!(state, cuX, cuY, cuZ, cuRho, cuUx, cuUy, cuUz, true)
         testee = BcdiCore.loss(state, true, true, false)
 
-        @test isapprox(testee, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(state.rhoDeriv), rhoDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.uxDeriv), uxDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.uyDeriv), uyDeriv, rtol=1e-6))
@@ -283,7 +283,7 @@ include("Multi.jl")
         BcdiCore.setpts!(state, cuX, cuY, cuZ, cuRho, cuUx, cuUy, cuUz, true)
         testee = BcdiCore.loss(state, true, true, false)
 
-        @test isapprox(testee, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(state.rhoDeriv), rhoDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.uxDeriv), uxDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.uyDeriv), uyDeriv, rtol=1e-6))
@@ -302,7 +302,7 @@ include("Multi.jl")
         BcdiCore.setpts!(state, cuX, cuY, cuZ, cuRho, cuUx, cuUy, cuUz, true)
         testee = BcdiCore.loss(state, true, true, false)
 
-        @test isapprox(testee, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(state.rhoDeriv), rhoDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.uxDeriv), uxDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.uyDeriv), uyDeriv, rtol=1e-6))
@@ -333,7 +333,7 @@ include("Multi.jl")
         BcdiCore.setpts!(state, cuX, cuY, cuZ, cuMx, cuMy, cuMz, cuRho, cuUx, cuUy, cuUz, true)
         testee = BcdiCore.loss(state, true, true, false)
 
-        @test isapprox(testee, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(state.xDeriv), xDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.yDeriv), yDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.zDeriv), zDeriv, rtol=1e-6))
@@ -358,7 +358,7 @@ include("Multi.jl")
         BcdiCore.setpts!(state, cuX, cuY, cuZ, cuMx, cuMy, cuMz, cuRho, cuUx, cuUy, cuUz, true)
         testee = BcdiCore.loss(state, true, true, false)
 
-        @test isapprox(testee, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(state.xDeriv), xDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.yDeriv), yDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.zDeriv), zDeriv, rtol=1e-6))
@@ -383,7 +383,7 @@ include("Multi.jl")
         BcdiCore.setpts!(state, cuX, cuY, cuZ, cuMx, cuMy, cuMz, cuRho, cuUx, cuUy, cuUz, true)
         testee = BcdiCore.loss(state, true, true, false)
 
-        @test isapprox(testee, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(state.xDeriv), xDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.yDeriv), yDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.zDeriv), zDeriv, rtol=1e-6))
@@ -408,7 +408,7 @@ include("Multi.jl")
         BcdiCore.setpts!(state, cuX, cuY, cuZ, cuMx, cuMy, cuMz, cuRho, cuUx, cuUy, cuUz, true)
         testee = BcdiCore.loss(state, true, true, false)
 
-        @test isapprox(testee, tester, rtol=1e-6)
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(state.xDeriv), xDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.yDeriv), yDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.zDeriv), zDeriv, rtol=1e-6))

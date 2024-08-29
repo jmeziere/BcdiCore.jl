@@ -1,70 +1,77 @@
 function loss(state, getDeriv, getLoss, saveRecip)
     forwardProp(state, saveRecip)
 
+    c = CUDA.ones(Float64, 1)
+    retVal = CUDA.ones(Float64, 1)
     if state.losstype == 0
-        c = 1.0
         if state.scale
-            c = mapreduce((i,sup) -> sup ? i : 0.0, +, state.intens, state.recSupport, init=0.0) / 
-                mapreduce((rsp, sup) -> sup ? abs2(rsp) : 0.0, +, state.plan.recipSpace, state.recSupport, init=0.0)
+            c .= mapreduce((i,sup) -> sup ? i : 0, +, state.intens, state.recSupport, dims=(1,2,3)) ./        
+                 mapreduce((rsp, sup) -> sup ? abs2(rsp) : 0.0, +, state.plan.recipSpace, state.recSupport, dims=(1,2,3))
         end
         if getDeriv
-            state.working .= 2 .* state.recSupport .* (c .* state.plan.recipSpace .- state.intens .* exp.(1im .* angle.(state.plan.recipSpace)) ./ abs.(state.plan.recipSpace))
+            state.working .= 2 .* state.recSupport .* (
+                c .* state.plan.recipSpace .- 
+                state.intens .* exp.(1im .* angle.(state.plan.recipSpace)) ./ abs.(state.plan.recipSpace)
+            )
             backProp(state)
         end
         if getLoss
-            state.plan.tempSpace .= sqrt(c) .* state.plan.recipSpace
-            return mapreduce(
+            state.plan.tempSpace .= sqrt.(c) .* state.plan.recipSpace
+            retVal .= mapreduce(
                 (i,rsp,sup) -> sup ? abs2(rsp) - LogExpFunctions.xlogy(i, abs2(rsp)) - i + LogExpFunctions.xlogx(i) : 0.0, +, 
-                state.intens, state.plan.tempSpace, state.recSupport, init = 0.0
-            )/length(state.recipSpace)
+                state.intens, state.plan.tempSpace, state.recSupport, dims=(1,2,3)
+            )./length(state.recipSpace)
         end
     elseif state.losstype == 1
-        c = 1.0
         if state.scale
-            c = mapreduce((i,rsp,sup) -> sup ? sqrt(i) * abs(rsp) : 0.0, +, state.intens, state.plan.recipSpace, state.recSupport, init=0.0) /
-                mapreduce((rsp,sup) -> sup ? abs2(rsp) : 0.0, +, state.plan.recipSpace, state.recSupport, init=0.0)
+            c .= mapreduce((i,rsp,sup) -> sup ? sqrt(i) * abs(rsp) : 0.0, +, state.intens, state.plan.recipSpace, state.recSupport, dims=(1,2,3)) ./
+                mapreduce((rsp,sup) -> sup ? abs2(rsp) : 0.0, +, state.plan.recipSpace, state.recSupport, dims=(1,2,3))
         end
         if getDeriv
-            state.working .= 2 .* c .* state.recSupport .* (c .* state.plan.recipSpace .- sqrt.(state.intens) .* exp.(1im .* angle.(state.plan.recipSpace)))
+            state.working .= 2 .* c .* state.recSupport .* (
+                c .* state.plan.recipSpace .- sqrt.(state.intens) .* exp.(1im .* angle.(state.plan.recipSpace))
+            )
             backProp(state)
         end
         if getLoss
             state.plan.tempSpace .= c .* state.plan.recipSpace
-            return mapreduce(
+            retVal .= mapreduce(
                 (i,rsp,sup) -> sup ? (abs(rsp) - sqrt(i))^2 : 0.0, +, 
-                state.intens, state.plan.tempSpace, state.recSupport
-            )/length(state.recipSpace)
+                state.intens, state.plan.tempSpace, state.recSupport, dims=(1,2,3)
+            )./length(state.recipSpace)
         end
     end
-    return 0.0
+
+    return retVal
 end
 
 function emptyLoss(state)
     state.plan.recipSpace .= state.recipSpace
 
+    c = CUDA.ones(Float64, 1)
+    retVal = CUDA.ones(Float64, 1)
     if state.losstype == 0
-        c = 1.0
         if state.scale
-            c = mapreduce((i,sup) -> sup ? i : 0.0, +, state.intens, state.recSupport, init=0.0) / 
-                mapreduce((rsp, sup) -> sup ? abs2(rsp) : 0.0, +, state.plan.recipSpace, state.recSupport, init=0.0)
+            c .= mapreduce((i,sup) -> sup ? i : 0, +, state.intens, state.recSupport, dims=(1,2,3)) ./        
+                 mapreduce((rsp, sup) -> sup ? abs2(rsp) : 0.0, +, state.plan.recipSpace, state.recSupport, dims=(1,2,3))
         end
-        state.plan.tempSpace .= sqrt(c) .* state.plan.recipSpace
-        return mapreduce(
+        state.plan.tempSpace .= sqrt.(c) .* state.plan.recipSpace
+        retVal .= mapreduce(
             (i,rsp,sup) -> sup ? abs2(rsp) - LogExpFunctions.xlogy(i, abs2(rsp)) - i + LogExpFunctions.xlogx(i) : 0.0, +, 
-            state.intens, state.plan.tempSpace, state.recSupport, init = 0.0
-        )/length(state.recipSpace)
+            state.intens, state.plan.tempSpace, state.recSupport, dims=(1,2,3)
+        )./length(state.recipSpace)
     elseif state.losstype == 1
-        c = 1.0
         if state.scale
-            c = mapreduce((i,rsp,sup) -> sup ? sqrt(i) * abs(rsp) : 0.0, +, state.intens, state.plan.recipSpace, state.recSupport) /
-                mapreduce((rsp,sup) -> sup ? abs2(rsp) : 0.0, +, state.plan.recipSpace, state.recSupport)
+            c .= mapreduce((i,rsp,sup) -> sup ? sqrt(i) * abs(rsp) : 0.0, +, state.intens, state.plan.recipSpace, state.recSupport, dims=(1,2,3)) ./
+                mapreduce((rsp,sup) -> sup ? abs2(rsp) : 0.0, +, state.plan.recipSpace, state.recSupport, dims=(1,2,3))
         end
         state.plan.tempSpace .= c .* state.plan.recipSpace
-        return mapreduce(
+        retVal .= mapreduce(
             (i,rsp,sup) -> sup ? (abs(rsp) - sqrt(i))^2 : 0.0, +, 
-            state.intens, state.plan.tempSpace, state.recSupport
-        )/length(state.recipSpace)
+            state.intens, state.plan.tempSpace, state.recSupport, dims=(1,2,3)
+        )./length(state.recipSpace)
     end
+    return retVal
 end
 
 function lossManyAtomic!(losses, losstype, x, y, z, adds, scalings, intens, recipSpace, h, k, l, recSupport, gh, gk, gl)

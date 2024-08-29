@@ -96,15 +96,6 @@ function setpts!(state::AtomicState, x, y, z, getDeriv)
     FINUFFT.cufinufft_setpts!(state.plan.revPlan, x, y, z)
 end
 
-function forwardProp(state::AtomicState, saveRecip)
-    state.plan * state.realSpace
-    state.plan.recipSpace .+= state.recipSpace
-
-    if saveRecip
-        state.recipSpace .= state.plan.recipSpace
-    end
-end
-
 function slowForwardProp(state::AtomicState, x, y, z, adds, saveRecip)
     state.plan.recipSpace .= state.recipSpace
     for i in 1:length(x)
@@ -184,15 +175,6 @@ struct TradState{T}
     end
 end
 
-function forwardProp(state::TradState, saveRecip)
-    state.plan * state.realSpace
-    state.plan.recipSpace .+= state.recipSpace
-
-    if saveRecip
-        state.recipSpace .= state.plan.recipSpace
-    end
-end
-
 function backProp(state::TradState)
     state.plan.tempSpace .= state.plan.recipSpace
 
@@ -249,12 +231,6 @@ function setpts!(state::MesoState, x, y, z, rho, ux, uy, uz, getDeriv)
     if maximum(x+ux) > 2*pi || minimum(x+ux) < 0 ||
        maximum(y+uy) > 2*pi || minimum(y+uy) < 0 ||
        maximum(z+uz) > 2*pi || minimum(z+uz) < 0
-        println(maximum(x+ux))
-        println(maximum(y+uy))
-        println(maximum(z+uz))
-        println(minimum(x+ux))
-        println(minimum(y+uy))
-        println(minimum(z+uz))
         @warn "Positions are not between 0 and 2π, these need to be scaled."
     end
     resize!(state.rholessRealSpace, length(x))
@@ -274,15 +250,6 @@ function setpts!(state::MesoState, x, y, z, rho, ux, uy, uz, getDeriv)
     
     FINUFFT.cufinufft_setpts!(state.plan.forPlan, mesoX, mesoY, mesoZ)
     FINUFFT.cufinufft_setpts!(state.plan.revPlan, mesoX, mesoY, mesoZ)
-end
-
-function forwardProp(state::MesoState, saveRecip)
-    state.plan * state.realSpace
-    state.plan.recipSpace .+= state.recipSpace
-
-    if saveRecip
-        state.recipSpace .= state.plan.recipSpace
-    end
 end
 
 function backProp(state::MesoState)
@@ -408,15 +375,6 @@ function setpts!(state::MultiState, x, y, z, mx, my, mz,  rho, ux, uy, uz, getDe
     FINUFFT.cufinufft_setpts!(state.rhoPlan.revPlan, mesoX, mesoY, mesoZ)
 end
 
-function forwardProp(state::MultiState, saveRecip)
-    state.plan * state.realSpace
-    state.plan.recipSpace .+= state.recipSpace
-
-    if saveRecip
-        state.recipSpace .= state.plan.recipSpace
-    end
-end
-
 function backProp(state::MultiState)
     nm = length(state.rholessRealSpace)
     state.plan.tempSpace .= state.plan.recipSpace
@@ -461,4 +419,15 @@ function backProp(state::MultiState)
 
     state.plan.recipSpace .= state.plan.tempSpace
     state.recipSpace .= state.tempSpace
+end
+
+function forwardProp(state, saveRecip)
+    state.plan * state.realSpace
+    state.plan.recipSpace .+= state.recipSpace
+
+    if saveRecip
+        state.recipSpace .= state.plan.recipSpace
+    end
+
+    return nothing
 end

@@ -1,7 +1,7 @@
 name = "BcdiCore"
 uuid = "72eb6a3e-ca63-4742-b260-85b05ca6d9e4"
 authors = ["Jason Meziere"]
-version = "0.0.1"
+version = "1.0.0"
 
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
@@ -9,10 +9,10 @@ FINUFFT = "d8beea63-0952-562e-9c6a-8e8ef7364055"
 LogExpFunctions = "2ab3a3ac-af41-5b50-aa03-7779005ae688"
 
 [compat]
-julia = "1.10.0"
 CUDA = "5.4.3"
 FINUFFT = "3.2.0"
 LogExpFunctions = "0.3.28"
+julia = "1.10.0"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
