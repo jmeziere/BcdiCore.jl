@@ -8,6 +8,7 @@ include("Atomic.jl")
 include("Traditional.jl")
 include("Meso.jl")
 include("Multi.jl")
+include("Regs.jl")
 
 @testset verbose=true "BcdiCore.jl" begin
     # Setup for Atomic Tests
@@ -52,7 +53,7 @@ include("Multi.jl")
     cuManyY = CuArray{Float64}(manyY)
     cuManyZ = CuArray{Float64}(manyZ)
     cuAdds = CuArray{Bool}(adds)
-        
+      
     # Atomic Test of Likelihood With Scaling
     @testset verbose=true "Atomic-Likelihood-Scaling" begin
         tester = atomicLikelihoodWithScaling(x, y, z, h.+G[1], k.+G[2], l.+G[3], intens, recSupport)
@@ -163,8 +164,10 @@ include("Multi.jl")
 
     # Setup for Traditional Tests
     realSpace = 100 .* rand(4,4,4) .+ 1im .* 100 .* rand(4,4,4)
+    flatSpace = 100 .* rand(n) .+ 1im .* 100 .* rand(n)
 
     cuRealSpace = CuArray{ComplexF64}(realSpace)
+    cuFlatSpace = CuArray{ComplexF64}(flatSpace)
 
     # Traditional Test of Likelihood With Scaling
     @testset verbose=true "Traditional-Likelihood-Scaling" begin
@@ -173,6 +176,18 @@ include("Multi.jl")
         iDeriv = ForwardDiff.gradient(isp -> tradLikelihoodWithScaling(real.(realSpace) .+ 1im .* isp, intens, recSupport), imag.(realSpace))
 
         state = BcdiCore.TradState("likelihood", true, cuRealSpace, cuIntens, cuRecSupport)
+        testee = BcdiCore.loss(state, true, true, false)
+
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
+        @test all(isapprox.(Array(real.(state.deriv)), rDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(imag.(state.deriv)), iDeriv, rtol=1e-6))
+
+        tester = tradLikelihoodWithScaling(flatSpace, intens, recSupport, x, y, z)
+        rDeriv = ForwardDiff.gradient(rsp -> tradLikelihoodWithScaling(rsp .+ 1im .* imag.(flatSpace), intens, recSupport, x, y, z), real.(flatSpace))
+        iDeriv = ForwardDiff.gradient(isp -> tradLikelihoodWithScaling(real.(flatSpace) .+ 1im .* isp, intens, recSupport, x, y, z), imag.(flatSpace))
+
+        state = BcdiCore.TradState("likelihood", true, cuFlatSpace, cuIntens, cuRecSupport)
+        BcdiCore.setpts!(state, cuX, cuY, cuZ, true)
         testee = BcdiCore.loss(state, true, true, false)
 
         @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
@@ -192,6 +207,18 @@ include("Multi.jl")
         @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(real.(state.deriv)), rDeriv, rtol=1e-6))
         @test all(isapprox.(Array(imag.(state.deriv)), iDeriv, rtol=1e-6))
+
+        tester = tradLikelihoodWithoutScaling(flatSpace, intens, recSupport, x, y, z)
+        rDeriv = ForwardDiff.gradient(rsp -> tradLikelihoodWithoutScaling(rsp .+ 1im .* imag.(flatSpace), intens, recSupport, x, y, z), real.(flatSpace))
+        iDeriv = ForwardDiff.gradient(isp -> tradLikelihoodWithoutScaling(real.(flatSpace) .+ 1im .* isp, intens, recSupport, x, y, z), imag.(flatSpace))
+
+        state = BcdiCore.TradState("likelihood", false, cuFlatSpace, cuIntens, cuRecSupport)
+        BcdiCore.setpts!(state, cuX, cuY, cuZ, true)
+        testee = BcdiCore.loss(state, true, true, false)
+
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
+        @test all(isapprox.(Array(real.(state.deriv)), rDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(imag.(state.deriv)), iDeriv, rtol=1e-6))
     end
 
     # Traditional Test of L2 Norm With Scaling
@@ -201,6 +228,18 @@ include("Multi.jl")
         iDeriv = ForwardDiff.gradient(isp -> tradL2WithScaling(real.(realSpace) .+ 1im .* isp, intens, recSupport), imag.(realSpace))
 
         state = BcdiCore.TradState("L2", true, cuRealSpace, cuIntens, cuRecSupport)
+        testee = BcdiCore.loss(state, true, true, false)
+
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
+        @test all(isapprox.(Array(real.(state.deriv)), rDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(imag.(state.deriv)), iDeriv, rtol=1e-6))
+
+        tester = tradL2WithScaling(flatSpace, intens, recSupport, x, y, z)
+        rDeriv = ForwardDiff.gradient(rsp -> tradL2WithScaling(rsp .+ 1im .* imag.(flatSpace), intens, recSupport, x, y, z), real.(flatSpace))
+        iDeriv = ForwardDiff.gradient(isp -> tradL2WithScaling(real.(flatSpace) .+ 1im .* isp, intens, recSupport, x, y, z), imag.(flatSpace))
+
+        state = BcdiCore.TradState("L2", true, cuFlatSpace, cuIntens, cuRecSupport)
+        BcdiCore.setpts!(state, cuX, cuY, cuZ, true)
         testee = BcdiCore.loss(state, true, true, false)
 
         @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
@@ -220,6 +259,18 @@ include("Multi.jl")
         @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(real.(state.deriv)), rDeriv, rtol=1e-6))
         @test all(isapprox.(Array(imag.(state.deriv)), iDeriv, rtol=1e-6))
+
+        tester = tradL2WithoutScaling(flatSpace, intens, recSupport, x, y, z)
+        rDeriv = ForwardDiff.gradient(rsp -> tradL2WithoutScaling(rsp .+ 1im .* imag.(flatSpace), intens, recSupport, x, y, z), real.(flatSpace))
+        iDeriv = ForwardDiff.gradient(isp -> tradL2WithoutScaling(real.(flatSpace) .+ 1im .* isp, intens, recSupport, x, y, z), imag.(flatSpace))
+
+        state = BcdiCore.TradState("L2", false, cuFlatSpace, cuIntens, cuRecSupport)
+        BcdiCore.setpts!(state, cuX, cuY, cuZ, true)
+        testee = BcdiCore.loss(state, true, true, false)
+
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
+        @test all(isapprox.(Array(real.(state.deriv)), rDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(imag.(state.deriv)), iDeriv, rtol=1e-6))
     end
 
     # Setup of Meso Tests
@@ -228,21 +279,47 @@ include("Multi.jl")
     uy = 0.2 .* pi .* rand(n) .- 0.1 .* pi
     uz = 0.2 .* pi .* rand(n) .- 0.1 .* pi
 
+    rhoB = 100 .* rand(4,4,4)
+    uxB = 0.2 .* pi .* rand(4,4,4) .- 0.1 .* pi
+    uyB = 0.2 .* pi .* rand(4,4,4) .- 0.1 .* pi
+    uzB = 0.2 .* pi .* rand(4,4,4) .- 0.1 .* pi
+
     cuRho = CuArray{Float64}(rho)
     cuUx = CuArray{Float64}(ux)
     cuUy = CuArray{Float64}(uy)
     cuUz = CuArray{Float64}(uz)
 
+    cuRhoB = CuArray{Float64}(rhoB)
+    cuUxB = CuArray{Float64}(uxB)
+    cuUyB = CuArray{Float64}(uyB)
+    cuUzB = CuArray{Float64}(uzB)
+
     # Meso Test of Likelihood With Scaling
     @testset verbose=true "Meso-Likelihood-Scaling" begin
-        tester = mesoLikelihoodWithScaling(x, y, z, rho, ux, uy, uz, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport)
-        rhoDeriv = ForwardDiff.gradient(rhop -> mesoLikelihoodWithScaling(x, y, z, rhop, ux, uy, uz, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport), rho)
-        uxDeriv = ForwardDiff.gradient(uxp -> mesoLikelihoodWithScaling(x, y, z, rho, uxp, uy, uz, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport), ux)
-        uyDeriv = ForwardDiff.gradient(uyp -> mesoLikelihoodWithScaling(x, y, z, rho, ux, uyp, uz, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport), uy)
-        uzDeriv = ForwardDiff.gradient(uzp -> mesoLikelihoodWithScaling(x, y, z, rho, ux, uy, uzp, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport), uz)
+        tester = mesoLikelihoodWithScaling(x, y, z, rho, ux, uy, uz, h, k, l, G, intens, recSupport)
+        rhoDeriv = ForwardDiff.gradient(rhop -> mesoLikelihoodWithScaling(x, y, z, rhop, ux, uy, uz, h, k, l, G, intens, recSupport), rho)
+        uxDeriv = ForwardDiff.gradient(uxp -> mesoLikelihoodWithScaling(x, y, z, rho, uxp, uy, uz, h, k, l, G, intens, recSupport), ux)
+        uyDeriv = ForwardDiff.gradient(uyp -> mesoLikelihoodWithScaling(x, y, z, rho, ux, uyp, uz, h, k, l, G, intens, recSupport), uy)
+        uzDeriv = ForwardDiff.gradient(uzp -> mesoLikelihoodWithScaling(x, y, z, rho, ux, uy, uzp, h, k, l, G, intens, recSupport), uz)
 
         state = BcdiCore.MesoState("likelihood", true, cuIntens, G, cuH, cuK, cuL, cuRecSupport)
         BcdiCore.setpts!(state, cuX, cuY, cuZ, cuRho, cuUx, cuUy, cuUz, true)
+        testee = BcdiCore.loss(state, true, true, false)
+
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
+        @test all(isapprox.(Array(state.rhoDeriv), rhoDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(state.uxDeriv), uxDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(state.uyDeriv), uyDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(state.uzDeriv), uzDeriv, rtol=1e-6))
+
+        tester = mesoLikelihoodWithScaling(rhoB, uxB, uyB, uzB, G, intens, recSupport)
+        rhoDeriv = ForwardDiff.gradient(rhop -> mesoLikelihoodWithScaling(rhop, uxB, uyB, uzB, G, intens, recSupport), rhoB)
+        uxDeriv = ForwardDiff.gradient(uxp -> mesoLikelihoodWithScaling(rhoB, uxp, uyB, uzB, G, intens, recSupport), uxB)
+        uyDeriv = ForwardDiff.gradient(uyp -> mesoLikelihoodWithScaling(rhoB, uxB, uyp, uzB, G, intens, recSupport), uyB)
+        uzDeriv = ForwardDiff.gradient(uzp -> mesoLikelihoodWithScaling(rhoB, uxB, uyB, uzp, G, intens, recSupport), uzB)
+
+        state = BcdiCore.MesoState("likelihood", true, cuIntens, G, cuRecSupport)
+        BcdiCore.setpts!(state, cuRhoB, cuUxB, cuUyB, cuUzB, true)
         testee = BcdiCore.loss(state, true, true, false)
 
         @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
@@ -254,14 +331,30 @@ include("Multi.jl")
 
     # Meso Test of Likelihood Without Scaling
     @testset verbose=true "Meso-Likelihood-NoScaling" begin
-        tester = mesoLikelihoodWithoutScaling(x, y, z, rho, ux, uy, uz, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport)
-        rhoDeriv = ForwardDiff.gradient(rhop -> mesoLikelihoodWithoutScaling(x, y, z, rhop, ux, uy, uz, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport), rho)
-        uxDeriv = ForwardDiff.gradient(uxp -> mesoLikelihoodWithoutScaling(x, y, z, rho, uxp, uy, uz, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport), ux)
-        uyDeriv = ForwardDiff.gradient(uyp -> mesoLikelihoodWithoutScaling(x, y, z, rho, ux, uyp, uz, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport), uy)
-        uzDeriv = ForwardDiff.gradient(uzp -> mesoLikelihoodWithoutScaling(x, y, z, rho, ux, uy, uzp, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport), uz)
+        tester = mesoLikelihoodWithoutScaling(x, y, z, rho, ux, uy, uz, h, k, l, G, intens, recSupport)
+        rhoDeriv = ForwardDiff.gradient(rhop -> mesoLikelihoodWithoutScaling(x, y, z, rhop, ux, uy, uz, h, k, l, G, intens, recSupport), rho)
+        uxDeriv = ForwardDiff.gradient(uxp -> mesoLikelihoodWithoutScaling(x, y, z, rho, uxp, uy, uz, h, k, l, G, intens, recSupport), ux)
+        uyDeriv = ForwardDiff.gradient(uyp -> mesoLikelihoodWithoutScaling(x, y, z, rho, ux, uyp, uz, h, k, l, G, intens, recSupport), uy)
+        uzDeriv = ForwardDiff.gradient(uzp -> mesoLikelihoodWithoutScaling(x, y, z, rho, ux, uy, uzp, h, k, l, G, intens, recSupport), uz)
 
         state = BcdiCore.MesoState("likelihood", false, cuIntens, G, cuH, cuK, cuL, cuRecSupport)
         BcdiCore.setpts!(state, cuX, cuY, cuZ, cuRho, cuUx, cuUy, cuUz, true)
+        testee = BcdiCore.loss(state, true, true, false)
+
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
+        @test all(isapprox.(Array(state.rhoDeriv), rhoDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(state.uxDeriv), uxDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(state.uyDeriv), uyDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(state.uzDeriv), uzDeriv, rtol=1e-6))
+
+        tester = mesoLikelihoodWithoutScaling(rhoB, uxB, uyB, uzB, G, intens, recSupport)
+        rhoDeriv = ForwardDiff.gradient(rhop -> mesoLikelihoodWithoutScaling(rhop, uxB, uyB, uzB, G, intens, recSupport), rhoB)
+        uxDeriv = ForwardDiff.gradient(uxp -> mesoLikelihoodWithoutScaling(rhoB, uxp, uyB, uzB, G, intens, recSupport), uxB)
+        uyDeriv = ForwardDiff.gradient(uyp -> mesoLikelihoodWithoutScaling(rhoB, uxB, uyp, uzB, G, intens, recSupport), uyB)
+        uzDeriv = ForwardDiff.gradient(uzp -> mesoLikelihoodWithoutScaling(rhoB, uxB, uyB, uzp, G, intens, recSupport), uzB)
+
+        state = BcdiCore.MesoState("likelihood", false, cuIntens, G, cuRecSupport)
+        BcdiCore.setpts!(state, cuRhoB, cuUxB, cuUyB, cuUzB, true)
         testee = BcdiCore.loss(state, true, true, false)
 
         @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
@@ -273,11 +366,11 @@ include("Multi.jl")
 
     # Meso Test of L2 Norm With Scaling
     @testset verbose=true "Meso-L2-Scaling" begin
-        tester = mesoL2WithScaling(x, y, z, rho, ux, uy, uz, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport)
-        rhoDeriv = ForwardDiff.gradient(rhop -> mesoL2WithScaling(x, y, z, rhop, ux, uy, uz, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport), rho)
-        uxDeriv = ForwardDiff.gradient(uxp -> mesoL2WithScaling(x, y, z, rho, uxp, uy, uz, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport), ux)
-        uyDeriv = ForwardDiff.gradient(uyp -> mesoL2WithScaling(x, y, z, rho, ux, uyp, uz, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport), uy)
-        uzDeriv = ForwardDiff.gradient(uzp -> mesoL2WithScaling(x, y, z, rho, ux, uy, uzp, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport), uz)
+        tester = mesoL2WithScaling(x, y, z, rho, ux, uy, uz, h, k, l, G, intens, recSupport)
+        rhoDeriv = ForwardDiff.gradient(rhop -> mesoL2WithScaling(x, y, z, rhop, ux, uy, uz, h, k, l, G, intens, recSupport), rho)
+        uxDeriv = ForwardDiff.gradient(uxp -> mesoL2WithScaling(x, y, z, rho, uxp, uy, uz, h, k, l, G, intens, recSupport), ux)
+        uyDeriv = ForwardDiff.gradient(uyp -> mesoL2WithScaling(x, y, z, rho, ux, uyp, uz, h, k, l, G, intens, recSupport), uy)
+        uzDeriv = ForwardDiff.gradient(uzp -> mesoL2WithScaling(x, y, z, rho, ux, uy, uzp, h, k, l, G, intens, recSupport), uz)
 
         state = BcdiCore.MesoState("L2", true, cuIntens, G, cuH, cuK, cuL, cuRecSupport)
         BcdiCore.setpts!(state, cuX, cuY, cuZ, cuRho, cuUx, cuUy, cuUz, true)
@@ -288,18 +381,50 @@ include("Multi.jl")
         @test all(isapprox.(Array(state.uxDeriv), uxDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.uyDeriv), uyDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.uzDeriv), uzDeriv, rtol=1e-6))
+
+        tester = mesoL2WithScaling(rhoB, uxB, uyB, uzB, G, intens, recSupport)
+        rhoDeriv = ForwardDiff.gradient(rhop -> mesoL2WithScaling(rhop, uxB, uyB, uzB, G, intens, recSupport), rhoB)
+        uxDeriv = ForwardDiff.gradient(uxp -> mesoL2WithScaling(rhoB, uxp, uyB, uzB, G, intens, recSupport), uxB)
+        uyDeriv = ForwardDiff.gradient(uyp -> mesoL2WithScaling(rhoB, uxB, uyp, uzB, G, intens, recSupport), uyB)
+        uzDeriv = ForwardDiff.gradient(uzp -> mesoL2WithScaling(rhoB, uxB, uyB, uzp, G, intens, recSupport), uzB)
+
+        state = BcdiCore.MesoState("L2", true, cuIntens, G, cuRecSupport)
+        BcdiCore.setpts!(state, cuRhoB, cuUxB, cuUyB, cuUzB, true)
+        testee = BcdiCore.loss(state, true, true, false)
+
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
+        @test all(isapprox.(Array(state.rhoDeriv), rhoDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(state.uxDeriv), uxDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(state.uyDeriv), uyDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(state.uzDeriv), uzDeriv, rtol=1e-6))
     end
 
-    # Atomic Test of L2 Norm Without Scaling
+    # Meso Test of L2 Norm Without Scaling
     @testset verbose=true "Meso-L2-NoScaling" begin
-        tester = mesoL2WithoutScaling(x, y, z, rho, ux, uy, uz, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport)
-        rhoDeriv = ForwardDiff.gradient(rhop -> mesoL2WithoutScaling(x, y, z, rhop, ux, uy, uz, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport), rho)
-        uxDeriv = ForwardDiff.gradient(uxp -> mesoL2WithoutScaling(x, y, z, rho, uxp, uy, uz, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport), ux)
-        uyDeriv = ForwardDiff.gradient(uyp -> mesoL2WithoutScaling(x, y, z, rho, ux, uyp, uz, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport), uy)
-        uzDeriv = ForwardDiff.gradient(uzp -> mesoL2WithoutScaling(x, y, z, rho, ux, uy, uzp, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport), uz)
+        tester = mesoL2WithoutScaling(x, y, z, rho, ux, uy, uz, h, k, l, G, intens, recSupport)
+        rhoDeriv = ForwardDiff.gradient(rhop -> mesoL2WithoutScaling(x, y, z, rhop, ux, uy, uz, h, k, l, G, intens, recSupport), rho)
+        uxDeriv = ForwardDiff.gradient(uxp -> mesoL2WithoutScaling(x, y, z, rho, uxp, uy, uz, h, k, l, G, intens, recSupport), ux)
+        uyDeriv = ForwardDiff.gradient(uyp -> mesoL2WithoutScaling(x, y, z, rho, ux, uyp, uz, h, k, l, G, intens, recSupport), uy)
+        uzDeriv = ForwardDiff.gradient(uzp -> mesoL2WithoutScaling(x, y, z, rho, ux, uy, uzp, h, k, l, G, intens, recSupport), uz)
 
         state = BcdiCore.MesoState("L2", false, cuIntens, G, cuH, cuK, cuL, cuRecSupport)
         BcdiCore.setpts!(state, cuX, cuY, cuZ, cuRho, cuUx, cuUy, cuUz, true)
+        testee = BcdiCore.loss(state, true, true, false)
+
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
+        @test all(isapprox.(Array(state.rhoDeriv), rhoDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(state.uxDeriv), uxDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(state.uyDeriv), uyDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(state.uzDeriv), uzDeriv, rtol=1e-6))
+
+        tester = mesoL2WithoutScaling(rhoB, uxB, uyB, uzB, G, intens, recSupport)
+        rhoDeriv = ForwardDiff.gradient(rhop -> mesoL2WithoutScaling(rhop, uxB, uyB, uzB, G, intens, recSupport), rhoB)
+        uxDeriv = ForwardDiff.gradient(uxp -> mesoL2WithoutScaling(rhoB, uxp, uyB, uzB, G, intens, recSupport), uxB)
+        uyDeriv = ForwardDiff.gradient(uyp -> mesoL2WithoutScaling(rhoB, uxB, uyp, uzB, G, intens, recSupport), uyB)
+        uzDeriv = ForwardDiff.gradient(uzp -> mesoL2WithoutScaling(rhoB, uxB, uyB, uzp, G, intens, recSupport), uzB)
+
+        state = BcdiCore.MesoState("L2", false, cuIntens, G, cuRecSupport)
+        BcdiCore.setpts!(state, cuRhoB, cuUxB, cuUyB, cuUzB, true)
         testee = BcdiCore.loss(state, true, true, false)
 
         @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
@@ -393,7 +518,7 @@ include("Multi.jl")
         @test all(isapprox.(Array(state.uzDeriv), uzDeriv, rtol=1e-6))
     end
 
-    # Atomic Test of L2 Norm Without Scaling
+    # Multi Test of L2 Norm Without Scaling
     @testset verbose=true "Multi-L2-NoScaling" begin
         tester = multiL2WithoutScaling(x, y, z, mx, my, mz, rho, ux, uy, uz, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport)
         xDeriv = ForwardDiff.gradient(xp -> multiL2WithoutScaling(xp, y, z, mx, my, mz, rho, ux, uy, uz, h, k, l, h.+G[1], k.+G[2], l.+G[3], intens, recSupport), x)
@@ -416,5 +541,53 @@ include("Multi.jl")
         @test all(isapprox.(Array(state.uxDeriv), uxDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.uyDeriv), uyDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.uzDeriv), uzDeriv, rtol=1e-6))
+    end
+
+    neighbors = zeros(Int64, 6,4^3)
+    neighbors[1,:] .= mod.(1:(4^3), 4^3) .+ 1
+    neighbors[2,:] .= mod.((1:(4^3)) .- 2, 4^3) .+ 1
+    neighbors[3,:] .= mod.((1:(4^3)) .+ 1, 4^3) .+ 1
+    neighbors[4,:] .= mod.((1:(4^3)) .- 3, 4^3) .+ 1
+    neighbors[5,:] .= mod.((1:(4^3)) .+ 2, 4^3) .+ 1
+    neighbors[6,:] .= mod.((1:(4^3)) .- 4, 4^3) .+ 1
+    flatNeighbors = zeros(Int64, 6,n)
+    flatNeighbors[1,:] .= mod.((1:n), n) .+ 1
+    flatNeighbors[2,:] .= mod.((1:n) .- 2, n) .+ 1
+    flatNeighbors[3,:] .= mod.((1:n) .+ 1, n) .+ 1
+    flatNeighbors[4,:] .= mod.((1:n) .- 3, n) .+ 1
+    flatNeighbors[5,:] .= mod.((1:n) .+ 2, n) .+ 1
+    flatNeighbors[6,:] .= mod.((1:n) .- 4, n) .+ 1
+
+    cuNeighbors = CuArray{Int64}(neighbors)
+    cuFlatNeighbors = CuArray{Int64}(flatNeighbors)
+
+    lambda = 0.1
+    tvreg = BcdiCore.TVReg(lambda, cuNeighbors)
+    flatTvreg = BcdiCore.TVReg(lambda, cuFlatNeighbors)
+
+    # Test of Regularizers
+    @testset verbose=true "Regularizers" begin
+        state = BcdiCore.TradState("likelihood", true, cuRealSpace, cuIntens, cuRecSupport)
+        tester = complexTVR(realSpace, lambda, neighbors)
+        rDeriv = ForwardDiff.gradient(rsp -> complexTVR(rsp .+ 1im .* imag.(realSpace), lambda, neighbors), real.(realSpace))
+        iDeriv = ForwardDiff.gradient(isp -> complexTVR(real.(realSpace) .+ 1im .* isp, lambda, neighbors), imag.(realSpace))
+
+        testee = BcdiCore.modifyLoss(state, tvreg)
+        BcdiCore.modifyDeriv(state, tvreg)
+
+        @test @CUDA.allowscalar isapprox(testee[1], tester, atol=1e-6)
+        @test all(isapprox.(Array(real.(state.deriv)), rDeriv, atol=1e-6))
+        @test all(isapprox.(Array(imag.(state.deriv)), iDeriv, atol=1e-6))
+
+        state = BcdiCore.MesoState("likelihood", true, cuIntens, G, cuH, cuK, cuL, cuRecSupport)
+        tester = floatTVR(rho, lambda, flatNeighbors)
+        rhoDeriv = ForwardDiff.gradient(rhop -> floatTVR(rhop, lambda, flatNeighbors), rho)
+
+        testee = BcdiCore.modifyLoss(state, flatTvreg, derivArr=cuRho)
+        resize!(state.rhoDeriv, n)
+        BcdiCore.modifyDeriv(state, flatTvreg, derivArr=cuRho)
+
+        @test @CUDA.allowscalar isapprox(testee[1], tester, atol=1e-6)
+        @test all(isapprox.(Array(state.rhoDeriv), rhoDeriv, atol=1e-6))
     end
 end

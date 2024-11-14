@@ -1,12 +1,12 @@
-struct AtomicState{T,F1,F2}
-    losstype::Int64
+struct AtomicState{T1,T2,F1}
+    loss::T1
     scale::Bool
     intens::CuArray{Int64, 3, CUDA.Mem.DeviceBuffer}
     G::Vector{Float64}
     h::CuArray{Int64, 3, CUDA.Mem.DeviceBuffer}
     k::CuArray{Int64, 3, CUDA.Mem.DeviceBuffer}
     l::CuArray{Int64, 3, CUDA.Mem.DeviceBuffer}
-    plan::T
+    plan::T2
     realSpace::CuArray{ComplexF64, 1, CUDA.Mem.DeviceBuffer}
     recipSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     tempSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
@@ -15,10 +15,8 @@ struct AtomicState{T,F1,F2}
     xDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
     yDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
     zDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
-    scalingManyAtomicKernel!::F1
-    scaleThreads::Int64
-    lossManyAtomicKernel!::F2
-    lossThreads::Int64
+    many!::F1
+    manyThreads::Int64
 
     function AtomicState(losstype, scale, intens, G, h, k, l, recSupport)
         plan = NUGpuPlan(size(intens))
@@ -30,58 +28,94 @@ struct AtomicState{T,F1,F2}
         yDeriv = CUDA.zeros(Float64, 0)
         zDeriv = CUDA.zeros(Float64, 0)
 
-        intLosstype = -1
         if losstype == "likelihood"
-            intLosstype = 0
+            loss = PoissonLikelihoodLoss()
+
+            if scale
+                manyKernel! = @cuda launch=false manyLikeScal!(
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Bool, 1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(ComplexF64, 1,1,1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(Bool, 1,1,1),
+                    0.0,  0.0, 0.0
+                )
+            else
+                manyKernel! = @cuda launch=false manyLikeNoScal!(
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Bool, 1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(ComplexF64, 1,1,1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(Bool, 1,1,1),
+                    0.0,  0.0, 0.0
+                )
+            end
         elseif losstype == "L2"
-            intLosstype = 1
+            loss = L2Loss()
+
+            if scale
+                manyKernel! = @cuda launch=false manyL2Scal!(
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Bool, 1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(ComplexF64, 1,1,1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(Int64, 1,1,1), 
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(Bool, 1,1,1),
+                    0.0,  0.0, 0.0
+                )
+            else
+                manyKernel! = @cuda launch=false manyL2NoScal!(
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Bool, 1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(ComplexF64, 1,1,1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(Int64, 1,1,1), 
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(Bool, 1,1,1),
+                    0.0,  0.0, 0.0
+                )
+            end
         end
+        config = launch_configuration(manyKernel!.fun)
+        manyThreads = min(length(intens),config.threads)
 
-        scalingManyAtomicKernel! = @cuda launch=false scalingManyAtomic!(
-            CUDA.zeros(Float64, 1),
-            0,
-            CUDA.zeros(Float64, 1),
-            CUDA.zeros(Float64, 1),
-            CUDA.zeros(Float64, 1),
-            CUDA.zeros(Bool, 1),
-            CUDA.zeros(Int64, 1,1,1),
-            CUDA.zeros(ComplexF64, 1,1,1),
-            CUDA.zeros(Int64, 1,1,1),
-            CUDA.zeros(Int64, 1,1,1),
-            CUDA.zeros(Int64, 1,1,1),
-            CUDA.zeros(Bool, 1,1,1),
-            0.0,  0.0, 0.0
+        new{
+            typeof(loss),
+            typeof(plan), 
+            typeof(manyKernel!) 
+        }(
+            loss, scale, intens, G, h, k, l, plan, realSpace, 
+            recipSpace, tempSpace, recSupport, working, xDeriv, 
+            yDeriv, zDeriv, manyKernel!, manyThreads, 
         )
-        configScaling = launch_configuration(scalingManyAtomicKernel!.fun)
-        scaleThreads = configScaling.threads
-
-        lossManyAtomicKernel! = @cuda launch=false lossManyAtomic!(
-            CUDA.zeros(Float64, 1),
-            0,
-            CUDA.zeros(Float64, 1),
-            CUDA.zeros(Float64, 1),
-            CUDA.zeros(Float64, 1),
-            CUDA.zeros(Bool, 1),
-            CUDA.zeros(Float64, 1),
-            CUDA.zeros(Int64, 1,1,1),
-            CUDA.zeros(ComplexF64, 1,1,1),
-            CUDA.zeros(Int64, 1,1,1),
-            CUDA.zeros(Int64, 1,1,1),
-            CUDA.zeros(Int64, 1,1,1),
-            CUDA.zeros(Bool, 1,1,1),
-            0.0,  0.0, 0.0
-        )
-        configLoss = launch_configuration(scalingManyAtomicKernel!.fun)
-        lossThreads = configLoss.threads
-
-        new{typeof(plan), typeof(scalingManyAtomicKernel!), typeof(lossManyAtomicKernel!)}(intLosstype, scale, intens, G, h, k, l, plan, realSpace, recipSpace, tempSpace, recSupport, working, xDeriv, yDeriv, zDeriv, scalingManyAtomicKernel!, scaleThreads, lossManyAtomicKernel!, lossThreads)
     end
 end
 
 function setpts!(state::AtomicState, x, y, z, getDeriv)
-    if maximum(x) > 2*pi || minimum(x) < 0 ||
-       maximum(y) > 2*pi || minimum(y) < 0 ||
-       maximum(z) > 2*pi || minimum(z) < 0
+    if maximum(x) > 3*pi || minimum(x) < -3*pi ||
+       maximum(y) > 3*pi || minimum(y) < -3*pi ||
+       maximum(z) > 3*pi || minimum(z) < -3*pi
         @warn "Positions are not between 0 and 2π, these need to be scaled."
     end
     resize!(state.realSpace, length(x))
@@ -142,37 +176,68 @@ function backProp(state::AtomicState)
     state.recipSpace .= state.tempSpace
 end
 
-struct TradState{T}
-    losstype::Int64
+struct TradState{T1,T2,I}
+    loss::T1
     scale::Bool
     intens::CuArray{Int64, 3, CUDA.Mem.DeviceBuffer}
-    plan::T
-    realSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
+    plan::T2
+    realSpace::CuArray{ComplexF64, I, CUDA.Mem.DeviceBuffer}
     recipSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     recSupport::CuArray{Bool, 3, CUDA.Mem.DeviceBuffer}
     working::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
-    deriv::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
+    deriv::CuArray{ComplexF64, I, CUDA.Mem.DeviceBuffer}
 
     function TradState(losstype, scale, realSpace, intens, recSupport)
-        plan = UGpuPlan(size(intens))
         recipSpace = CUDA.zeros(ComplexF64, size(intens))
         working = CUDA.zeros(ComplexF64, size(intens))
-        deriv = CUDA.zeros(ComplexF64, size(intens))
 
-        intLosstype = -1
         if losstype == "likelihood"
-            intLosstype = 0
+            loss = PoissonLikelihoodLoss()
         elseif losstype == "L2"
-            intLosstype = 1
+            loss = L2Loss()
         end
 
-        new{typeof(plan)}(intLosstype, scale, intens, plan, realSpace, recipSpace, recSupport, working, deriv)
+        if ndims(realSpace) == 3
+            plan = UGpuPlan(size(intens))
+            deriv = CUDA.zeros(ComplexF64, size(intens))
+
+            new{typeof(loss),typeof(plan),3}(
+                loss, scale, intens, plan, realSpace, 
+                recipSpace, recSupport, working, deriv
+            )
+        else
+            plan = NUGpuPlan(size(intens))
+            deriv = CUDA.zeros(Float64, 0)
+
+            new{typeof(loss),typeof(plan),1}(
+                loss, scale, intens, plan, realSpace, 
+                recipSpace, recSupport, working, deriv
+            )
+        end
     end
 
-    function TradState(intLosstype, scale, intens, plan, realSpace, recSupport, working, deriv)
+    function TradState(loss, scale, intens, plan, realSpace, recSupport, working, deriv)
         recipSpace = CUDA.zeros(ComplexF64, size(intens))
-        new{typeof(plan)}(intLosstype, scale, intens, plan, realSpace, recipSpace, recSupport, working, deriv)
+        new{typeof(loss),typeof(plan),ndims(realSpace)}(
+            loss, scale, intens, plan, realSpace, 
+            recipSpace, recSupport, working, deriv
+        )
     end
+end
+
+function setpts!(state::TradState, x, y, z, getDeriv)
+    if maximum(x) > 3*pi || minimum(x) < -3*pi ||
+       maximum(y) > 3*pi || minimum(y) < -3*pi ||
+       maximum(z) > 3*pi || minimum(z) < -3*pi
+        @warn "Positions are not between -3π and 3π, these need to be scaled."
+    end
+    resize!(state.plan.realSpace, length(x))
+    if getDeriv
+        resize!(state.deriv, length(x))
+    end
+
+    FINUFFT.cufinufft_setpts!(state.plan.forPlan, x, y, z)
+    FINUFFT.cufinufft_setpts!(state.plan.revPlan, x, y, z)
 end
 
 function backProp(state::TradState)
@@ -184,72 +249,109 @@ function backProp(state::TradState)
     state.plan.recipSpace .= state.plan.tempSpace
 end
 
-struct MesoState{T}
-    losstype::Int64
+struct MesoState{T1,T2,I,J}
+    loss::T1
     scale::Bool
     intens::CuArray{Int64, 3, CUDA.Mem.DeviceBuffer}
     G::Vector{Float64}
-    h::CuArray{Int64, 3, CUDA.Mem.DeviceBuffer}
-    k::CuArray{Int64, 3, CUDA.Mem.DeviceBuffer}
-    l::CuArray{Int64, 3, CUDA.Mem.DeviceBuffer}
-    plan::T
-    realSpace::CuArray{ComplexF64, 1, CUDA.Mem.DeviceBuffer}
-    rholessRealSpace::CuArray{ComplexF64, 1, CUDA.Mem.DeviceBuffer}
+    h::CuArray{Int64, J, CUDA.Mem.DeviceBuffer}
+    k::CuArray{Int64, J, CUDA.Mem.DeviceBuffer}
+    l::CuArray{Int64, J, CUDA.Mem.DeviceBuffer}
+    plan::T2
+    realSpace::CuArray{ComplexF64, I, CUDA.Mem.DeviceBuffer}
+    rholessRealSpace::CuArray{ComplexF64, I, CUDA.Mem.DeviceBuffer}
     recipSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     tempSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
     recSupport::CuArray{Bool, 3, CUDA.Mem.DeviceBuffer}
     working::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
-    rhoDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
-    uxDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
-    uyDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
-    uzDeriv::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
+    rhoDeriv::CuArray{Float64, I, CUDA.Mem.DeviceBuffer}
+    uxDeriv::CuArray{Float64, I, CUDA.Mem.DeviceBuffer}
+    uyDeriv::CuArray{Float64, I, CUDA.Mem.DeviceBuffer}
+    uzDeriv::CuArray{Float64, I, CUDA.Mem.DeviceBuffer}
 
-    function MesoState(losstype, scale, intens, G, h, k, l, recSupport)
-        plan = NUGpuPlan(size(intens))
-        realSpace = CUDA.zeros(ComplexF64, 0)
-        rholessRealSpace = CUDA.zeros(ComplexF64, 0)
+    function MesoState(losstype, scale, intens, G, recSupport)
         recipSpace = CUDA.zeros(ComplexF64, size(intens))
         tempSpace = CUDA.zeros(ComplexF64, size(intens))
         working = CUDA.zeros(ComplexF64, size(intens))
+
+        if losstype == "likelihood"
+            loss = PoissonLikelihoodLoss()
+        elseif losstype == "L2"
+            loss = L2Loss()
+        end
+
+        plan = UGpuPlan(size(intens))
+        realSpace = CUDA.zeros(ComplexF64, size(intens))
+        rholessRealSpace = CUDA.zeros(ComplexF64, size(intens))
+        rhoDeriv = CUDA.zeros(Float64, size(intens))
+        uxDeriv = CUDA.zeros(Float64, size(intens))
+        uyDeriv = CUDA.zeros(Float64, size(intens))
+        uzDeriv = CUDA.zeros(Float64, size(intens))
+        h = CUDA.zeros(1)
+        k = CUDA.zeros(1)
+        l = CUDA.zeros(1)
+
+        new{typeof(loss),typeof(plan),3,1}(
+            loss, scale, intens, G, h, k, l, plan, realSpace, rholessRealSpace, recipSpace,
+            tempSpace, recSupport, working, rhoDeriv, uxDeriv, uyDeriv, uzDeriv
+        )
+    end
+
+    function MesoState(losstype, scale, intens, G, h, k, l, recSupport)
+        recipSpace = CUDA.zeros(ComplexF64, size(intens))
+        tempSpace = CUDA.zeros(ComplexF64, size(intens))
+        working = CUDA.zeros(ComplexF64, size(intens))
+
+        if losstype == "likelihood"
+            loss = PoissonLikelihoodLoss()
+        elseif losstype == "L2"
+            loss = L2Loss()
+        end
+
+        plan = NUGpuPlan(size(intens))
+        realSpace = CUDA.zeros(ComplexF64, 0)
+        rholessRealSpace = CUDA.zeros(ComplexF64, 0)
         rhoDeriv = CUDA.zeros(Float64, 0)
         uxDeriv = CUDA.zeros(Float64, 0)
         uyDeriv = CUDA.zeros(Float64, 0)
         uzDeriv = CUDA.zeros(Float64, 0)
 
-        intLosstype = -1
-        if losstype == "likelihood"
-            intLosstype = 0
-        elseif losstype == "L2"
-            intLosstype = 1
-        end
-
-        new{typeof(plan)}(intLosstype, scale, intens, G, h, k, l, plan, realSpace, rholessRealSpace, recipSpace, tempSpace, recSupport, working, rhoDeriv, uxDeriv, uyDeriv, uzDeriv)
+        new{typeof(loss),typeof(plan),1,3}(
+            loss, scale, intens, G, h, k, l, plan, realSpace, rholessRealSpace, recipSpace,
+            tempSpace, recSupport, working, rhoDeriv, uxDeriv, uyDeriv, uzDeriv
+        )
     end
+
 end
 
-function setpts!(state::MesoState, x, y, z, rho, ux, uy, uz, getDeriv)
-    if maximum(x+ux) > 2*pi || minimum(x+ux) < 0 ||
-       maximum(y+uy) > 2*pi || minimum(y+uy) < 0 ||
-       maximum(z+uz) > 2*pi || minimum(z+uz) < 0
-        @warn "Positions are not between 0 and 2π, these need to be scaled."
+function setpts!(state::MesoState{T1,T2,1,T3}, x, y, z, rho, ux, uy, uz, getDeriv) where{T1,T2,T3}
+    if maximum(x+ux) > 3*pi || minimum(x+ux) < -3*pi ||
+       maximum(y+uy) > 3*pi || minimum(y+uy) < -3*pi ||
+       maximum(z+uz) > 3*pi || minimum(z+uz) < -3*pi
+        @warn "Positions are not between -3π and 3π, these need to be scaled."
     end
-    resize!(state.rholessRealSpace, length(x))
-    resize!(state.realSpace, length(x))
+
+    if length(x) != length(state.rholessRealSpace)
+        resize!(state.rholessRealSpace, length(x))
+        resize!(state.realSpace, length(x))
+        resize!(state.plan.realSpace, length(x))
+    end
     state.rholessRealSpace .= exp.(-1im .* (state.G[1] .* ux .+ state.G[2] .* uy .+ state.G[3] .* uz))
     state.realSpace .= rho .* state.rholessRealSpace
-    resize!(state.plan.realSpace, length(x))
-    if getDeriv
+    if getDeriv && length(x) != length(state.rhoDeriv)
         resize!(state.rhoDeriv, length(x))
         resize!(state.uxDeriv, length(x))
         resize!(state.uyDeriv, length(x))
         resize!(state.uzDeriv, length(x))
     end
-    mesoX = x .+ ux
-    mesoY = y .+ uy
-    mesoZ = z .+ uz
     
-    FINUFFT.cufinufft_setpts!(state.plan.forPlan, mesoX, mesoY, mesoZ)
-    FINUFFT.cufinufft_setpts!(state.plan.revPlan, mesoX, mesoY, mesoZ)
+    FINUFFT.cufinufft_setpts!(state.plan.forPlan, x, y, z)
+    FINUFFT.cufinufft_setpts!(state.plan.revPlan, x, y, z)
+end
+
+function setpts!(state::MesoState{T1,T2,3,T3}, rho, ux, uy, uz, getDeriv) where{T1,T2,T3}
+    state.rholessRealSpace .= exp.(-1im .* (state.G[1] .* ux .+ state.G[2] .* uy .+ state.G[3] .* uz))
+    state.realSpace .= rho .* state.rholessRealSpace
 end
 
 function backProp(state::MesoState)
@@ -288,16 +390,16 @@ function backProp(state::MesoState)
     state.recipSpace .= state.tempSpace
 end
 
-struct MultiState{T}
-    losstype::Int64
+struct MultiState{T1,T2}
+    loss::T1
     scale::Bool
     intens::CuArray{Int64, 3, CUDA.Mem.DeviceBuffer}
     G::Vector{Float64}
     h::CuArray{Int64, 3, CUDA.Mem.DeviceBuffer}
     k::CuArray{Int64, 3, CUDA.Mem.DeviceBuffer}
     l::CuArray{Int64, 3, CUDA.Mem.DeviceBuffer}
-    plan::T
-    rhoPlan::T
+    plan::T2
+    rhoPlan::T2
     realSpace::CuArray{ComplexF64, 1, CUDA.Mem.DeviceBuffer}
     rholessRealSpace::CuArray{ComplexF64, 1, CUDA.Mem.DeviceBuffer}
     recipSpace::CuArray{ComplexF64, 3, CUDA.Mem.DeviceBuffer}
@@ -328,25 +430,28 @@ struct MultiState{T}
         uyDeriv = CUDA.zeros(Float64, 0)
         uzDeriv = CUDA.zeros(Float64, 0)
 
-        intLosstype = -1
         if losstype == "likelihood"
-            intLosstype = 0
+            loss = PoissonLikelihoodLoss()
         elseif losstype == "L2"
-            intLosstype = 1
+            loss = L2Loss()
         end
 
-        new{typeof(plan)}(intLosstype, scale, intens, G, h, k, l, plan, rhoPlan, realSpace, rholessRealSpace, recipSpace, tempSpace, recSupport, working, xDeriv, yDeriv, zDeriv, rhoDeriv, uxDeriv, uyDeriv, uzDeriv)
+        new{typeof(loss),typeof(plan)}(
+            loss, scale, intens, G, h, k, l, plan, rhoPlan, realSpace, rholessRealSpace, 
+            recipSpace, tempSpace, recSupport, working, xDeriv, yDeriv, zDeriv, rhoDeriv, 
+            uxDeriv, uyDeriv, uzDeriv
+        )
     end
 end
 
 function setpts!(state::MultiState, x, y, z, mx, my, mz,  rho, ux, uy, uz, getDeriv)
-    if maximum(x) > 2*pi || minimum(x) < 0 ||
-       maximum(y) > 2*pi || minimum(y) < 0 ||
-       maximum(z) > 2*pi || minimum(z) < 0 ||
-       maximum(mx+ux) > 2*pi || minimum(mx+ux) < 0 ||
-       maximum(my+uy) > 2*pi || minimum(my+uy) < 0 ||
-       maximum(mz+uz) > 2*pi || minimum(mz+uz) < 0
-        @warn "Positions are not between 0 and 2π, these need to be scaled."
+    if maximum(x) > 3*pi || minimum(x) < -3*pi ||
+       maximum(y) > 3*pi || minimum(y) < -3*pi ||
+       maximum(z) > 3*pi || minimum(z) < -3*pi ||
+       maximum(mx+ux) > 3*pi || minimum(mx+ux) < -3*pi ||
+       maximum(my+uy) > 3*pi || minimum(my+uy) < -3*pi ||
+       maximum(mz+uz) > 3*pi || minimum(mz+uz) < -3*pi
+        @warn "Positions are not between -3π and 3π, these need to be scaled."
     end
     resize!(state.rholessRealSpace, length(mx))
     resize!(state.realSpace, length(x)+length(mx))

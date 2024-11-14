@@ -1,4 +1,4 @@
-function centerPeak(intens, recSupport, loc)
+function centerPeak(intens, recSupport, loc, truncRecSupport)
     s = size(intens)
     shift = (0,0,0)
     supShift = (0,0,0)
@@ -13,19 +13,19 @@ function centerPeak(intens, recSupport, loc)
     end
     intens = CuArray{Float64, 3, CUDA.Mem.DeviceBuffer}(circshift(intens,shift))
 
-    if supShift[1] < 0
+    if supShift[1] < 0 && truncRecSupport
         recSupport[1:-supShift[1],:,:] .= false
-    elseif supShift[1] > 0
+    elseif supShift[1] > 0 && truncRecSupport
         recSupport[s[1]+1-supShift[1]:end,:,:] .= false
     end     
-    if supShift[2] < 0
+    if supShift[2] < 0 && truncRecSupport
         recSupport[:,1:-supShift[2],:] .= false
-    elseif supShift[2] > 0
+    elseif supShift[2] > 0 && truncRecSupport
         recSupport[:,s[2]+1-supShift[2]:end,:] .= false
     end     
-    if supShift[3] < 0
+    if supShift[3] < 0 && truncRecSupport
         recSupport[:,:,1:-supShift[3]] .= false
-    elseif supShift[3] > 0
+    elseif supShift[3] > 0 && truncRecSupport
         recSupport[:,:,s[3]+1-supShift[3]:end] .= false
     end     
 
