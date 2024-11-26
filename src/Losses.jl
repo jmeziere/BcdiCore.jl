@@ -69,7 +69,33 @@ function getLoss(state, loss::L2Loss, c)
     return mapreduce(
         (i,rsp,sup) -> sup ? (abs(rsp) - sqrt(i))^2 : 0.0, +,
         state.intens, state.plan.tempSpace, state.recSupport, dims=(1,2,3)
-    )./length(state.recipSpace)
+    ) ./ length(state.recipSpace)
+end
+
+struct HuberLoss
+    delta::Float64
+end
+
+function getScale(state, loss::HuberLoss)
+    throw("Scale not available for Huber Loss")
+end
+
+function getPartial(state, loss::HuberLoss, c)
+    delta = loss.delta
+    map!(
+        (i,rsp,sup) -> sup ? (
+            abs(abs(rsp)-sqrt(i)) <= delta ? 2*(rsp - sqrt(i)*exp(1im*angle(rsp))) : 2*delta*sign(abs(rsp)-sqrt(i))*exp(1im*angle(rsp))
+        ) : 0.0 + 0.0*1im, state.working, state.intens, state.plan.recipSpace, state.recSupport
+    ) ./ length(state.recipSpace)
+end
+
+function getLoss(state, loss::HuberLoss, c)
+    delta = loss.delta
+    return mapreduce(
+        (i,rsp,sup) -> sup ? (
+            abs(abs(rsp)-sqrt(i)) <= delta ? (abs(rsp) - sqrt(i))^2 : 2*delta*(abs(abs(rsp)-sqrt(i))-delta/2)
+        ) : 0.0, +, state.intens, state.plan.recipSpace, state.recSupport, dims=(1,2,3)
+    ) ./ length(state.recipSpace)
 end
 
 struct L2Reg{I}
@@ -230,7 +256,7 @@ function modifyLoss(state, reg::BetaReg)
     a = reg.a
     b = reg.b
     c = reg.c
-    return mapreduce(x -> (abs(x)+0.001)^a*(1.001-abs(x))^b+c, +, state.realSpace, dims=(1,2,3))
+    return reg.lambda .* mapreduce(x -> (abs(x)+0.001)^a*(1.001-abs(x))^b+c*abs(x), +, state.realSpace, dims=(1,2,3))
 end
 
 function manyLikeScal!(losses, x, y, z, adds, intens, recipSpace, h, k, l, recSupport, gh, gk, gl)

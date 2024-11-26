@@ -96,6 +96,40 @@ struct AtomicState{T1,T2,F1}
                     0.0,  0.0, 0.0
                 )
             end
+        elseif losstype == "Huber"
+            loss = HuberLoss(0.1*sqrt(maximum(intens)))
+
+            if scale
+                manyKernel! = @cuda launch=false manyHuberScal!(
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Bool, 1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(ComplexF64, 1,1,1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(Bool, 1,1,1),
+                    0.0,  0.0, 0.0
+                )
+            else
+                manyKernel! = @cuda launch=false manyHuberNoScal!(
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Float64, 1),
+                    CUDA.zeros(Bool, 1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(ComplexF64, 1,1,1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(Int64, 1,1,1),
+                    CUDA.zeros(Bool, 1,1,1),
+                    0.0,  0.0, 0.0
+                )
+            end
         end
         config = launch_configuration(manyKernel!.fun)
         manyThreads = min(length(intens),config.threads)
@@ -195,6 +229,8 @@ struct TradState{T1,T2,I}
             loss = PoissonLikelihoodLoss()
         elseif losstype == "L2"
             loss = L2Loss()
+        elseif losstype == "Huber"
+            loss = HuberLoss(0.1*sqrt(maximum(intens)))
         end
 
         if ndims(realSpace) == 3
@@ -278,6 +314,8 @@ struct MesoState{T1,T2,I,J}
             loss = PoissonLikelihoodLoss()
         elseif losstype == "L2"
             loss = L2Loss()
+        elseif losstype == "Huber"
+            loss = HuberLoss(0.1*sqrt(maximum(intens)))
         end
 
         plan = UGpuPlan(size(intens))
@@ -287,9 +325,9 @@ struct MesoState{T1,T2,I,J}
         uxDeriv = CUDA.zeros(Float64, size(intens))
         uyDeriv = CUDA.zeros(Float64, size(intens))
         uzDeriv = CUDA.zeros(Float64, size(intens))
-        h = CUDA.zeros(1)
-        k = CUDA.zeros(1)
-        l = CUDA.zeros(1)
+        h = CUDA.zeros(Float64,1)
+        k = CUDA.zeros(Float64,1)
+        l = CUDA.zeros(Float64,1)
 
         new{typeof(loss),typeof(plan),3,1}(
             loss, scale, intens, G, h, k, l, plan, realSpace, rholessRealSpace, recipSpace,
@@ -316,7 +354,7 @@ struct MesoState{T1,T2,I,J}
         uyDeriv = CUDA.zeros(Float64, 0)
         uzDeriv = CUDA.zeros(Float64, 0)
 
-        new{typeof(loss),typeof(plan),1,3}(
+        new{typeof(loss),typeof(plan),1,ndims(h)}(
             loss, scale, intens, G, h, k, l, plan, realSpace, rholessRealSpace, recipSpace,
             tempSpace, recSupport, working, rhoDeriv, uxDeriv, uyDeriv, uzDeriv
         )
@@ -345,8 +383,13 @@ function setpts!(state::MesoState{T1,T2,1,T3}, x, y, z, rho, ux, uy, uz, getDeri
         resize!(state.uzDeriv, length(x))
     end
     
-    FINUFFT.cufinufft_setpts!(state.plan.forPlan, x, y, z)
-    FINUFFT.cufinufft_setpts!(state.plan.revPlan, x, y, z)
+    if ndims(state.h) == 1
+        FINUFFT.cufinufft_setpts!(state.plan.forPlan, x, y, z)
+        FINUFFT.cufinufft_setpts!(state.plan.revPlan, x, y, z)
+    else
+        FINUFFT.cufinufft_setpts!(state.plan.forPlan, x.+ux, y.+uy, z.+uz)
+        FINUFFT.cufinufft_setpts!(state.plan.revPlan, x.+ux, y.+uy, z.+uz)
+    end
 end
 
 function setpts!(state::MesoState{T1,T2,3,T3}, rho, ux, uy, uz, getDeriv) where{T1,T2,T3}
@@ -434,6 +477,8 @@ struct MultiState{T1,T2}
             loss = PoissonLikelihoodLoss()
         elseif losstype == "L2"
             loss = L2Loss()
+        elseif losstype == "Huber"
+            loss = HuberLoss(0.1*sqrt(maximum(intens)))
         end
 
         new{typeof(loss),typeof(plan)}(
