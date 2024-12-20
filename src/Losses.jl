@@ -73,7 +73,7 @@ function getLoss(state, loss::L2Loss, c)
 end
 
 struct HuberLoss
-    delta::Float64
+    delta::Ref{Float64}
 end
 
 function getScale(state, loss::HuberLoss)
@@ -81,7 +81,10 @@ function getScale(state, loss::HuberLoss)
 end
 
 function getPartial(state, loss::HuberLoss, c)
-    delta = loss.delta
+    delta = loss.delta[]
+println(reduce(+, abs.(abs.(state.plan.recipSpace)-sqrt.(state.intens)) .<= delta))
+println(maximum(abs.(abs.(state.plan.recipSpace)-sqrt.(state.intens))))
+println(delta)
     map!(
         (i,rsp,sup) -> sup ? (
             abs(abs(rsp)-sqrt(i)) <= delta ? 2*(rsp - sqrt(i)*exp(1im*angle(rsp))) : 2*delta*sign(abs(rsp)-sqrt(i))*exp(1im*angle(rsp))
@@ -90,12 +93,36 @@ function getPartial(state, loss::HuberLoss, c)
 end
 
 function getLoss(state, loss::HuberLoss, c)
-    delta = loss.delta
+    delta = loss.delta[]
     return mapreduce(
         (i,rsp,sup) -> sup ? (
             abs(abs(rsp)-sqrt(i)) <= delta ? (abs(rsp) - sqrt(i))^2 : 2*delta*(abs(abs(rsp)-sqrt(i))-delta/2)
         ) : 0.0, +, state.intens, state.plan.recipSpace, state.recSupport, dims=(1,2,3)
     ) ./ length(state.recipSpace)
+end
+
+struct L1Reg{I}
+    lambda::Float64
+    support::CuArray{Bool, I, CUDA.Mem.DeviceBuffer}
+    neg::Bool
+
+    function L1Reg(lambda, support; neg=false)
+        new{ndims(support)}(lambda, support, neg)
+    end
+end
+
+function modifyDeriv(state, reg::L1Reg)
+    if hasproperty(state, :deriv)
+        state.deriv .+= (.-1).^reg.neg .* reg.lambda .* exp.(1im .* angle.(state.realSpace)) .* reg.support
+    else
+        state.rhoDeriv .+= (.-1).^reg.neg .* reg.lambda .* reg.support
+    end
+end
+
+function modifyLoss(state, reg::L1Reg)
+    return (.-1).^reg.neg .* reg.lambda .* mapreduce(
+        (r,s) -> s ? abs(r) : 0.0, +, state.realSpace, reg.support, dims=(1,2,3)
+    )
 end
 
 struct L2Reg{I}

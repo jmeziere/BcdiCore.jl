@@ -97,7 +97,7 @@ struct AtomicState{T1,T2,F1}
                 )
             end
         elseif losstype == "Huber"
-            loss = HuberLoss(0.1*sqrt(maximum(intens)))
+            loss = HuberLoss(0.5*sqrt(maximum(intens)))
 
             if scale
                 manyKernel! = @cuda launch=false manyHuberScal!(
@@ -252,7 +252,15 @@ struct TradState{T1,T2,I}
         end
     end
 
-    function TradState(loss, scale, intens, plan, realSpace, recSupport, working, deriv)
+    function TradState(losstype, scale, intens, plan, realSpace, recSupport, working, deriv)
+        if losstype == "likelihood"
+            loss = PoissonLikelihoodLoss()
+        elseif losstype == "L2"
+            loss = L2Loss()
+        elseif losstype == "Huber"
+            loss = HuberLoss(0.03*sqrt(maximum(intens)))
+        end
+
         recipSpace = CUDA.zeros(ComplexF64, size(intens))
         new{typeof(loss),typeof(plan),ndims(realSpace)}(
             loss, scale, intens, plan, realSpace, 
@@ -285,7 +293,7 @@ function backProp(state::TradState)
     state.plan.recipSpace .= state.plan.tempSpace
 end
 
-struct MesoState{T1,T2,I,J}
+struct MesoState{T1,T2,I,J,B}
     loss::T1
     scale::Bool
     intens::CuArray{Int64, 3, CUDA.Mem.DeviceBuffer}
@@ -304,8 +312,11 @@ struct MesoState{T1,T2,I,J}
     uxDeriv::CuArray{Float64, I, CUDA.Mem.DeviceBuffer}
     uyDeriv::CuArray{Float64, I, CUDA.Mem.DeviceBuffer}
     uzDeriv::CuArray{Float64, I, CUDA.Mem.DeviceBuffer}
+    disuxDeriv::CuArray{Float64, I, CUDA.Mem.DeviceBuffer}
+    disuyDeriv::CuArray{Float64, I, CUDA.Mem.DeviceBuffer}
+    disuzDeriv::CuArray{Float64, I, CUDA.Mem.DeviceBuffer}
 
-    function MesoState(losstype, scale, intens, G, recSupport)
+    function MesoState(losstype, scale, intens, G, recSupport, nonuniform, highstrain, disjoint)
         recipSpace = CUDA.zeros(ComplexF64, size(intens))
         tempSpace = CUDA.zeros(ComplexF64, size(intens))
         working = CUDA.zeros(ComplexF64, size(intens))
@@ -318,51 +329,49 @@ struct MesoState{T1,T2,I,J}
             loss = HuberLoss(0.1*sqrt(maximum(intens)))
         end
 
-        plan = UGpuPlan(size(intens))
-        realSpace = CUDA.zeros(ComplexF64, size(intens))
-        rholessRealSpace = CUDA.zeros(ComplexF64, size(intens))
-        rhoDeriv = CUDA.zeros(Float64, size(intens))
-        uxDeriv = CUDA.zeros(Float64, size(intens))
-        uyDeriv = CUDA.zeros(Float64, size(intens))
-        uzDeriv = CUDA.zeros(Float64, size(intens))
-        h = CUDA.zeros(Float64,1)
-        k = CUDA.zeros(Float64,1)
-        l = CUDA.zeros(Float64,1)
-
-        new{typeof(loss),typeof(plan),3,1}(
-            loss, scale, intens, G, h, k, l, plan, realSpace, rholessRealSpace, recipSpace,
-            tempSpace, recSupport, working, rhoDeriv, uxDeriv, uyDeriv, uzDeriv
-        )
-    end
-
-    function MesoState(losstype, scale, intens, G, h, k, l, recSupport)
-        recipSpace = CUDA.zeros(ComplexF64, size(intens))
-        tempSpace = CUDA.zeros(ComplexF64, size(intens))
-        working = CUDA.zeros(ComplexF64, size(intens))
-
-        if losstype == "likelihood"
-            loss = PoissonLikelihoodLoss()
-        elseif losstype == "L2"
-            loss = L2Loss()
+        if nonuniform
+            plan = NUGpuPlan(size(intens))
+            realSpace = CUDA.zeros(ComplexF64, 0)
+            rholessRealSpace = CUDA.zeros(ComplexF64, 0)
+            rhoDeriv = CUDA.zeros(Float64, 0)
+            uxDeriv = CUDA.zeros(Float64, 0)
+            uyDeriv = CUDA.zeros(Float64, 0)
+            uzDeriv = CUDA.zeros(Float64, 0)
+            disuxDeriv = CUDA.zeros(Float64, 0)
+            disuyDeriv = CUDA.zeros(Float64, 0)
+            disuzDeriv = CUDA.zeros(Float64, 0)
+            if highstrain
+                h, k, l = generateRecSpace(size(intens))
+            else
+                h = CUDA.zeros(Float64,1)
+                k = CUDA.zeros(Float64,1)
+                l = CUDA.zeros(Float64,1)
+            end
+        else
+            plan = UGpuPlan(size(intens))
+            realSpace = CUDA.zeros(ComplexF64, size(intens))
+            rholessRealSpace = CUDA.zeros(ComplexF64, size(intens))
+            rhoDeriv = CUDA.zeros(Float64, size(intens))
+            uxDeriv = CUDA.zeros(Float64, size(intens))
+            uyDeriv = CUDA.zeros(Float64, size(intens))
+            uzDeriv = CUDA.zeros(Float64, size(intens))
+            disuxDeriv = CUDA.zeros(Float64, 0,0,0)
+            disuyDeriv = CUDA.zeros(Float64, 0,0,0)
+            disuzDeriv = CUDA.zeros(Float64, 0,0,0)
+            h = CUDA.zeros(Float64,1)
+            k = CUDA.zeros(Float64,1)
+            l = CUDA.zeros(Float64,1)
         end
 
-        plan = NUGpuPlan(size(intens))
-        realSpace = CUDA.zeros(ComplexF64, 0)
-        rholessRealSpace = CUDA.zeros(ComplexF64, 0)
-        rhoDeriv = CUDA.zeros(Float64, 0)
-        uxDeriv = CUDA.zeros(Float64, 0)
-        uyDeriv = CUDA.zeros(Float64, 0)
-        uzDeriv = CUDA.zeros(Float64, 0)
-
-        new{typeof(loss),typeof(plan),1,ndims(h)}(
+        new{typeof(loss),typeof(plan),ndims(realSpace),ndims(h),disjoint}(
             loss, scale, intens, G, h, k, l, plan, realSpace, rholessRealSpace, recipSpace,
-            tempSpace, recSupport, working, rhoDeriv, uxDeriv, uyDeriv, uzDeriv
+            tempSpace, recSupport, working, rhoDeriv, uxDeriv, uyDeriv, uzDeriv,
+            disuxDeriv, disuyDeriv, disuzDeriv
         )
     end
-
 end
 
-function setpts!(state::MesoState{T1,T2,1,T3}, x, y, z, rho, ux, uy, uz, getDeriv) where{T1,T2,T3}
+function setpts!(state::MesoState{T1,T2,1,T3,false}, x, y, z, rho, ux, uy, uz, getDeriv) where{T1,T2,T3}
     if maximum(x+ux) > 3*pi || minimum(x+ux) < -3*pi ||
        maximum(y+uy) > 3*pi || minimum(y+uy) < -3*pi ||
        maximum(z+uz) > 3*pi || minimum(z+uz) < -3*pi
@@ -392,16 +401,46 @@ function setpts!(state::MesoState{T1,T2,1,T3}, x, y, z, rho, ux, uy, uz, getDeri
     end
 end
 
-function setpts!(state::MesoState{T1,T2,3,T3}, rho, ux, uy, uz, getDeriv) where{T1,T2,T3}
+function setpts!(
+    state::MesoState{T1,T2,1,T3,true}, x, y, z, rho, ux, uy, uz, disux, disuy, disuz, getDeriv
+) where{T1,T2,T3}
+    if maximum(x+ux) > 3*pi || minimum(x+ux) < -3*pi ||
+       maximum(y+uy) > 3*pi || minimum(y+uy) < -3*pi ||
+       maximum(z+uz) > 3*pi || minimum(z+uz) < -3*pi
+        @warn "Positions are not between -3π and 3π, these need to be scaled."
+    end
+
+    if length(x) != length(state.rholessRealSpace)
+        resize!(state.rholessRealSpace, length(x))
+        resize!(state.realSpace, length(x))
+        resize!(state.plan.realSpace, length(x))
+    end
+    state.rholessRealSpace .= exp.(-1im .* (state.G[1] .* ux .+ state.G[2] .* uy .+ state.G[3] .* uz))
+    state.realSpace .= rho .* state.rholessRealSpace
+    if getDeriv && length(x) != length(state.rhoDeriv)
+        resize!(state.rhoDeriv, length(x))
+        resize!(state.uxDeriv, length(x))
+        resize!(state.uyDeriv, length(x))
+        resize!(state.uzDeriv, length(x))
+        resize!(state.disuxDeriv, length(x))
+        resize!(state.disuyDeriv, length(x))
+        resize!(state.disuzDeriv, length(x))
+    end
+
+    FINUFFT.cufinufft_setpts!(state.plan.forPlan, x.+disux, y.+disuy, z.+disuz)
+    FINUFFT.cufinufft_setpts!(state.plan.revPlan, x.+disux, y.+disuy, z.+disuz)
+end
+
+function setpts!(state::MesoState{T1,T2,3,T3,B}, rho, ux, uy, uz, getDeriv) where{T1,T2,T3,B}
     state.rholessRealSpace .= exp.(-1im .* (state.G[1] .* ux .+ state.G[2] .* uy .+ state.G[3] .* uz))
     state.realSpace .= rho .* state.rholessRealSpace
 end
 
-function backProp(state::MesoState)
+function backProp(state::MesoState{T1,T2,T3,3,false}) where{T1,T2,T3}
     state.plan.tempSpace .= state.plan.recipSpace
     state.tempSpace .= state.recipSpace
 
-    # Calculate the ux derivatives
+    # Calculate the rho derivatives
     state.rhoDeriv.= 0
     state.recipSpace .= state.working
     state.plan \ state.recipSpace
@@ -428,6 +467,89 @@ function backProp(state::MesoState)
     state.plan \ state.recipSpace
     state.uzDeriv .+= real.(state.plan.realSpace) .* imag.(state.realSpace)
     state.uzDeriv .-= imag.(state.plan.realSpace) .* real.(state.realSpace)
+
+    state.plan.recipSpace .= state.plan.tempSpace
+    state.recipSpace .= state.tempSpace
+end
+
+function backProp(state::MesoState{T1,T2,T3,T4,true}) where{T1,T2,T3,T4}
+    state.plan.tempSpace .= state.plan.recipSpace
+    state.tempSpace .= state.recipSpace
+
+    state.recipSpace .= state.working
+    state.plan \ state.recipSpace
+
+    # Calculate the rho derivatives
+    state.rhoDeriv.= 0
+    state.rhoDeriv .+= real.(state.plan.realSpace) .* real.(state.rholessRealSpace)
+    state.rhoDeriv .+= imag.(state.plan.realSpace) .* imag.(state.rholessRealSpace)
+
+    # Calculate the ux derivatives
+    state.uxDeriv.= 0
+    state.uxDeriv .+= state.G[1] .* (real.(state.plan.realSpace) .* imag.(state.realSpace))
+    state.uxDeriv .-= state.G[1] .* (imag.(state.plan.realSpace) .* real.(state.realSpace))
+
+    # Calculate the uy derivatives
+    state.uyDeriv.= 0
+    state.uyDeriv .+= state.G[2] .* (real.(state.plan.realSpace) .* imag.(state.realSpace))
+    state.uyDeriv .-= state.G[2] .* (imag.(state.plan.realSpace) .* real.(state.realSpace))
+
+    # Calculate the uz derivatives
+    state.uzDeriv.= 0
+    state.uzDeriv .+= state.G[3] .* (real.(state.plan.realSpace) .* imag.(state.realSpace))
+    state.uzDeriv .-= state.G[3] .* (imag.(state.plan.realSpace) .* real.(state.realSpace))
+
+    # Calculate the disux derivatives
+    state.disuxDeriv.= 0
+    state.recipSpace .= state.working .* state.h
+    state.plan \ state.recipSpace
+    state.disuxDeriv .+= real.(state.plan.realSpace) .* imag.(state.realSpace)
+    state.disuxDeriv .-= imag.(state.plan.realSpace) .* real.(state.realSpace)
+
+    # Calculate the disuy derivatives
+    state.disuyDeriv.= 0
+    state.recipSpace .= state.working .* state.k
+    state.plan \ state.recipSpace
+    state.disuyDeriv .+= real.(state.plan.realSpace) .* imag.(state.realSpace)
+    state.disuyDeriv .-= imag.(state.plan.realSpace) .* real.(state.realSpace)
+
+    # Calculate the disuz derivatives
+    state.disuzDeriv.= 0
+    state.recipSpace .= state.working .* state.l
+    state.plan \ state.recipSpace
+    state.disuzDeriv .+= real.(state.plan.realSpace) .* imag.(state.realSpace)
+    state.disuzDeriv .-= imag.(state.plan.realSpace) .* real.(state.realSpace)
+
+    state.plan.recipSpace .= state.plan.tempSpace
+    state.recipSpace .= state.tempSpace
+end
+
+function backProp(state::MesoState{T1,T2,T3,1,false}) where{T1,T2,T3}
+    state.plan.tempSpace .= state.plan.recipSpace
+    state.tempSpace .= state.recipSpace
+
+    state.recipSpace .= state.working
+    state.plan \ state.recipSpace
+
+    # Calculate the rho derivatives
+    state.rhoDeriv.= 0
+    state.rhoDeriv .+= real.(state.plan.realSpace) .* real.(state.rholessRealSpace)
+    state.rhoDeriv .+= imag.(state.plan.realSpace) .* imag.(state.rholessRealSpace)
+
+    # Calculate the ux derivatives
+    state.uxDeriv.= 0
+    state.uxDeriv .+= state.G[1] .* (real.(state.plan.realSpace) .* imag.(state.realSpace))
+    state.uxDeriv .-= state.G[1] .* (imag.(state.plan.realSpace) .* real.(state.realSpace))
+
+    # Calculate the uy derivatives
+    state.uyDeriv.= 0
+    state.uyDeriv .+= state.G[2] .* (real.(state.plan.realSpace) .* imag.(state.realSpace))
+    state.uyDeriv .-= state.G[2] .* (imag.(state.plan.realSpace) .* real.(state.realSpace))
+
+    # Calculate the uz derivatives
+    state.uzDeriv.= 0
+    state.uzDeriv .+= state.G[3] .* (real.(state.plan.realSpace) .* imag.(state.realSpace))
+    state.uzDeriv .-= state.G[3] .* (imag.(state.plan.realSpace) .* real.(state.realSpace))
 
     state.plan.recipSpace .= state.plan.tempSpace
     state.recipSpace .= state.tempSpace
@@ -478,7 +600,7 @@ struct MultiState{T1,T2}
         elseif losstype == "L2"
             loss = L2Loss()
         elseif losstype == "Huber"
-            loss = HuberLoss(0.1*sqrt(maximum(intens)))
+            loss = HuberLoss(0.5*sqrt(maximum(intens)))
         end
 
         new{typeof(loss),typeof(plan)}(

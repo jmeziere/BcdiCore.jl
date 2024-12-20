@@ -64,6 +64,9 @@ include("Atomic.jl")
     ux = 0.2 .* pi .* rand(n) .- 0.1 .* pi
     uy = 0.2 .* pi .* rand(n) .- 0.1 .* pi
     uz = 0.2 .* pi .* rand(n) .- 0.1 .* pi
+    disux = 0.2 .* pi .* rand(n) .- 0.1 .* pi
+    disuy = 0.2 .* pi .* rand(n) .- 0.1 .* pi
+    disuz = 0.2 .* pi .* rand(n) .- 0.1 .* pi
 
     rhoB = 100 .* rand(4,4,4)
     normRhoB = rhoB ./ maximum(rhoB)
@@ -75,6 +78,9 @@ include("Atomic.jl")
     cuUx = CuArray{Float64}(ux)
     cuUy = CuArray{Float64}(uy)
     cuUz = CuArray{Float64}(uz)
+    cuDisux = CuArray{Float64}(disux)
+    cuDisuy = CuArray{Float64}(disuy)
+    cuDisuz = CuArray{Float64}(disuz)
 
     cuRhoB = CuArray{Float64}(rhoB)
     cuNormRhoB = CuArray{Float64}(normRhoB)
@@ -164,13 +170,16 @@ include("Atomic.jl")
         @test all(isapprox.(Array(imag.(state.deriv)), iDeriv, rtol=1e-6))
 
         # Test of meso model
+        nonuniform = true
+        highstrain = true
+        disjoint = false
         tester = mesoModel(x, y, z, rho, ux, uy, uz, h, k, l, G, intens, recSupport)
         rhoDeriv = ForwardDiff.gradient(rhop -> mesoModel(x, y, z, rhop, ux, uy, uz, h, k, l, G, intens, recSupport), rho)
         uxDeriv = ForwardDiff.gradient(uxp -> mesoModel(x, y, z, rho, uxp, uy, uz, h, k, l, G, intens, recSupport), ux)
         uyDeriv = ForwardDiff.gradient(uyp -> mesoModel(x, y, z, rho, ux, uyp, uz, h, k, l, G, intens, recSupport), uy)
         uzDeriv = ForwardDiff.gradient(uzp -> mesoModel(x, y, z, rho, ux, uy, uzp, h, k, l, G, intens, recSupport), uz)
 
-        state = BcdiCore.MesoState("L2", false, cuIntens, G, cuH, cuK, cuL, cuRecSupport)
+        state = BcdiCore.MesoState("L2", false, cuIntens, G, cuRecSupport, nonuniform, highstrain, disjoint)
         BcdiCore.setpts!(state, cuX, cuY, cuZ, cuRho, cuUx, cuUy, cuUz, true)
         testee = BcdiCore.loss(state, true, true, false)
 
@@ -180,13 +189,41 @@ include("Atomic.jl")
         @test all(isapprox.(Array(state.uyDeriv), uyDeriv, rtol=1e-6))
         @test all(isapprox.(Array(state.uzDeriv), uzDeriv, rtol=1e-6))
 
+        nonuniform = true
+        highstrain = true
+        disjoint = true
+        tester = mesoModel(x, y, z, rho, ux, uy, uz, disux, disuy, disuz, h, k, l, G, intens, recSupport)
+        rhoDeriv = ForwardDiff.gradient(rhop -> mesoModel(x, y, z, rhop, ux, uy, uz, disux, disuy, disuz, h, k, l, G, intens, recSupport), rho)
+        uxDeriv = ForwardDiff.gradient(uxp -> mesoModel(x, y, z, rho, uxp, uy, uz, disux, disuy, disuz, h, k, l, G, intens, recSupport), ux)
+        uyDeriv = ForwardDiff.gradient(uyp -> mesoModel(x, y, z, rho, ux, uyp, uz, disux, disuy, disuz, h, k, l, G, intens, recSupport), uy)
+        uzDeriv = ForwardDiff.gradient(uzp -> mesoModel(x, y, z, rho, ux, uy, uzp, disux, disuy, disuz, h, k, l, G, intens, recSupport), uz)
+        disuxDeriv = ForwardDiff.gradient(disuxp -> mesoModel(x, y, z, rho, ux, uy, uz, disuxp, disuy, disuz, h, k, l, G, intens, recSupport), disux)
+        disuyDeriv = ForwardDiff.gradient(disuyp -> mesoModel(x, y, z, rho, ux, uy, uz, disux, disuyp, disuz, h, k, l, G, intens, recSupport), disuy)
+        disuzDeriv = ForwardDiff.gradient(disuzp -> mesoModel(x, y, z, rho, ux, uy, uz, disux, disuy, disuzp, h, k, l, G, intens, recSupport), disuz)
+
+        state = BcdiCore.MesoState("L2", false, cuIntens, G, cuRecSupport, nonuniform, highstrain, disjoint)
+        BcdiCore.setpts!(state, cuX, cuY, cuZ, cuRho, cuUx, cuUy, cuUz, cuDisux, cuDisuy, cuDisuz, true)
+        testee = BcdiCore.loss(state, true, true, false)
+
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
+        @test all(isapprox.(Array(state.rhoDeriv), rhoDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(state.uxDeriv), uxDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(state.uyDeriv), uyDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(state.uzDeriv), uzDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(state.disuxDeriv), disuxDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(state.disuyDeriv), disuyDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(state.disuzDeriv), disuzDeriv, rtol=1e-6))
+
+        nonuniform = false
+        highstrain = false
+        disjoint = false
         tester = mesoModel(rhoB, uxB, uyB, uzB, G, intens, recSupport)
         rhoDeriv = ForwardDiff.gradient(rhop -> mesoModel(rhop, uxB, uyB, uzB, G, intens, recSupport), rhoB)
         uxDeriv = ForwardDiff.gradient(uxp -> mesoModel(rhoB, uxp, uyB, uzB, G, intens, recSupport), uxB)
         uyDeriv = ForwardDiff.gradient(uyp -> mesoModel(rhoB, uxB, uyp, uzB, G, intens, recSupport), uyB)
         uzDeriv = ForwardDiff.gradient(uzp -> mesoModel(rhoB, uxB, uyB, uzp, G, intens, recSupport), uzB)
 
-        state = BcdiCore.MesoState("L2", false, cuIntens, G, cuRecSupport)
+        state = BcdiCore.MesoState("L2", false, cuIntens, G, cuRecSupport, nonuniform, highstrain, disjoint)
         BcdiCore.setpts!(state, cuRhoB, cuUxB, cuUyB, cuUzB, true)
         testee = BcdiCore.loss(state, true, true, false)
 
@@ -285,6 +322,10 @@ include("Atomic.jl")
 
     # Test of Regularizers
     @testset verbose=true "Regularizers" begin
+        nonuniform = false
+        highstrain = false
+        disjoint = false
+
         # Test of total variation (magnitude) regularization
         tester = TVRMag(realSpace, lambda, neighbors)
         rDeriv = ForwardDiff.gradient(rsp -> TVRMag(rsp .+ 1im .* imag.(realSpace), lambda, neighbors), real.(realSpace))
@@ -301,7 +342,7 @@ include("Atomic.jl")
         tester = TVRMag(rhoB, lambda, neighbors)
         rhoDeriv = ForwardDiff.gradient(rhop -> TVRMag(rhop, lambda, neighbors), rhoB)
 
-        state = BcdiCore.MesoState("likelihood", true, cuIntens, G, cuRecSupport)
+        state = BcdiCore.MesoState("likelihood", true, cuIntens, G, cuRecSupport, nonuniform, highstrain, disjoint)
         BcdiCore.setpts!(state, cuRhoB, cuUxB, cuUyB, cuUzB, true)
         testee = BcdiCore.modifyLoss(state, tvmagreg)
         BcdiCore.modifyDeriv(state, tvmagreg)
@@ -328,7 +369,7 @@ include("Atomic.jl")
         uyDeriv = ForwardDiff.gradient(uyp -> TVR(rhoB, uxB, uyp, uzB, G, lambda, neighbors), uyB)
         uzDeriv = ForwardDiff.gradient(uzp -> TVR(rhoB, uxB, uyB, uzp, G, lambda, neighbors), uzB)
 
-        state = BcdiCore.MesoState("likelihood", true, cuIntens, G, cuRecSupport)
+        state = BcdiCore.MesoState("likelihood", true, cuIntens, G, cuRecSupport, nonuniform, highstrain, disjoint)
         BcdiCore.setpts!(state, cuRhoB, cuUxB, cuUyB, cuUzB, true)
         testee = BcdiCore.modifyLoss(state, tvreg)
         BcdiCore.modifyDeriv(state, tvreg)
@@ -355,7 +396,7 @@ include("Atomic.jl")
         tester = BetaR(normRhoB, lambda, a, b, c)
         rhoDeriv = ForwardDiff.gradient(rhop -> BetaR(rhop, lambda, a, b, c), normRhoB)
 
-        state = BcdiCore.MesoState("likelihood", true, cuIntens, G, cuRecSupport)
+        state = BcdiCore.MesoState("likelihood", true, cuIntens, G, cuRecSupport, nonuniform, highstrain, disjoint)
         BcdiCore.setpts!(state, cuNormRhoB, cuUxB, cuUyB, cuUzB, true)
         testee = BcdiCore.modifyLoss(state, betareg)
         BcdiCore.modifyDeriv(state, betareg)
@@ -379,7 +420,7 @@ include("Atomic.jl")
         tester = L2R(rhoB, lambda)
         rhoDeriv = ForwardDiff.gradient(rhop -> L2R(rhop, lambda), rhoB)
 
-        state = BcdiCore.MesoState("likelihood", true, cuIntens, G, cuRecSupport)
+        state = BcdiCore.MesoState("likelihood", true, cuIntens, G, cuRecSupport, nonuniform, highstrain, disjoint)
         BcdiCore.setpts!(state, cuRhoB, cuUxB, cuUyB, cuUzB, true)
         testee = BcdiCore.modifyLoss(state, l2reg)
         BcdiCore.modifyDeriv(state, l2reg)

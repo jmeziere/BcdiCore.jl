@@ -85,6 +85,36 @@ function mesoModel(x, y, z, rho, ux, uy, uz, h, k, l, G, intens, recSupport)
     return mapreduce((sqi,absr) -> (absr - sqi)^2, +, sqIntens, absRecipSpace)/length(intens)
 end
 
+function mesoModel(x, y, z, rho, ux, uy, uz, disux, disuy, disuz, h, k, l, G, intens, recSupport)
+    diffType = Float64
+    if typeof(rho[1]) != Float64
+        diffType = typeof(rho[1])
+    elseif typeof(ux[1]) != Float64
+        diffType = typeof(ux[1])
+    elseif typeof(uy[1]) != Float64
+        diffType = typeof(uy[1])
+    elseif typeof(uz[1]) != Float64
+        diffType = typeof(uz[1])
+    elseif typeof(disux[1]) != Float64
+        diffType = typeof(disux[1])
+    elseif typeof(disuy[1]) != Float64
+        diffType = typeof(disuy[1])
+    elseif typeof(disuz[1]) != Float64
+        diffType = typeof(disuz[1])
+    end
+    recipSpace = zeros(Complex{diffType}, 4,4,4)
+    for i in 1:length(h)
+        for j in 1:length(x)
+            recipSpace[i] += rho[j] * exp(-1im * (
+                x[j] * h[i] + y[j] * k[i] + z[j] * l[i] + ux[j] * G[1] + uy[j] * G[2] + uz[j] * G[3] + disux[j] * h[i] + disuy[j] * k[i] + disuz[j] * l[i]
+            ))
+        end
+    end
+    absRecipSpace = abs.(recipSpace) .* recSupport
+    sqIntens = sqrt.(intens) .* recSupport
+    return mapreduce((sqi,absr) -> (absr - sqi)^2, +, sqIntens, absRecipSpace)/length(intens)
+end
+
 function mesoModel(rho, ux, uy, uz, G, intens, recSupport)
     diffType = Float64
     if typeof(rho[1]) != Float64
