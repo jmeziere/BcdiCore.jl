@@ -74,30 +74,45 @@ end
 
 struct HuberLoss
     delta::Ref{Float64}
+    a::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
+    da::CuArray{Float64, 1, CUDA.Mem.DeviceBuffer}
+
+    function HuberLoss(delta, a=1)
+        new(delta, [a], [a])
+    end
 end
 
 function getScale(state, loss::HuberLoss)
-    throw("Scale not available for Huber Loss")
+    return mapreduce((i,rsp,sup) -> sup ? sqrt(i) * abs(rsp) : 0.0, +, state.intens, state.plan.recipSpace, state.recSupport, dims=(1,2,3)) ./
+           mapreduce((rsp,sup) -> sup ? abs2(rsp) : 0.0, +, state.plan.recipSpace, state.recSupport, dims=(1,2,3))
 end
 
 function getPartial(state, loss::HuberLoss, c)
+    state.plan.tempSpace .= loss.a .* c .* state.plan.recipSpace
     delta = loss.delta[]
-println(reduce(+, abs.(abs.(state.plan.recipSpace)-sqrt.(state.intens)) .<= delta))
-println(maximum(abs.(abs.(state.plan.recipSpace)-sqrt.(state.intens))))
-println(delta)
     map!(
         (i,rsp,sup) -> sup ? (
-            abs(abs(rsp)-sqrt(i)) <= delta ? 2*(rsp - sqrt(i)*exp(1im*angle(rsp))) : 2*delta*sign(abs(rsp)-sqrt(i))*exp(1im*angle(rsp))
-        ) : 0.0 + 0.0*1im, state.working, state.intens, state.plan.recipSpace, state.recSupport
-    ) ./ length(state.recipSpace)
+            abs(abs(rsp)-sqrt(i)) <= delta ? 2*(abs(rsp)-sqrt(i))+0.0*1im : 2*delta*sign(abs(rsp)-sqrt(i))+0.0*1im
+        ) : 0.0 + 0.0*1im, state.working, state.intens, state.plan.tempSpace, state.recSupport
+    ) 
+    state.working .*= loss.a
+    if state.scale
+        state.working .= 
+            mapreduce((rsp,w)->abs(rsp)*real(w), +, state.plan.recipSpace, state.working, dims=(1,2,3)) .* 
+            state.recSupport .* (sqrt.(state.intens) .- 2 .* c .* abs.(state.plan.recipSpace)) ./ 
+            mapreduce((rsp,sup) -> sup ? abs2(rsp) : 0.0, +, state.plan.recipSpace, state.recSupport, dims=(1,2,3)) .+
+            c .* state.working
+    end
+    state.working .*= exp.(1im .* angle.(state.plan.recipSpace))
 end
 
 function getLoss(state, loss::HuberLoss, c)
+    state.plan.tempSpace .= loss.a .* c .* state.plan.recipSpace
     delta = loss.delta[]
     return mapreduce(
         (i,rsp,sup) -> sup ? (
             abs(abs(rsp)-sqrt(i)) <= delta ? (abs(rsp) - sqrt(i))^2 : 2*delta*(abs(abs(rsp)-sqrt(i))-delta/2)
-        ) : 0.0, +, state.intens, state.plan.recipSpace, state.recSupport, dims=(1,2,3)
+        ) : 0.0, +, state.intens, state.plan.tempSpace, state.recSupport, dims=(1,2,3)
     ) ./ length(state.recipSpace)
 end
 
@@ -260,21 +275,27 @@ struct BetaReg
     a::Float64
     b::Float64
     c::Float64
+    m::Ref{Float64}
+
+    function BetaReg(lambda, a, b, c, m=1)
+        new(lambda, a, b, c, m)
+    end
 end
 
 function modifyDeriv(state, reg::BetaReg)
     a = reg.a
     b = reg.b
     c = reg.c
+    m = reg.m[]
     if hasproperty(state, :deriv)
         state.deriv .+= reg.lambda .* (
-            a .* (abs.(state.realSpace) .+ 0.001).^(a-1) .* (1.001 .- abs.(state.realSpace)).^b .-
-            b .* (abs.(state.realSpace) .+ 0.001).^a .* (1.001 .- abs.(state.realSpace)).^(b-1) .+ c
+            a .* (abs.(state.realSpace) .+ 0.001).^(a-1) .* (m+0.001 .- abs.(state.realSpace)).^b .-
+            b .* (abs.(state.realSpace) .+ 0.001).^a .* (m+0.001 .- abs.(state.realSpace)).^(b-1) .+ c
         ).* exp.(1im .* angle.(state.realSpace))
     else
         state.rhoDeriv .+= reg.lambda .* (
-            a .* (abs.(state.realSpace) .+ 0.001).^(a-1) .* (1.001 .- abs.(state.realSpace)).^b .-
-            b .* (abs.(state.realSpace) .+ 0.001).^a .* (1.001 .- abs.(state.realSpace)).^(b-1) .+ c
+            a .* (abs.(state.realSpace) .+ 0.001).^(a-1) .* (m+0.001 .- abs.(state.realSpace)).^b .-
+            b .* (abs.(state.realSpace) .+ 0.001).^a .* (m+0.001 .- abs.(state.realSpace)).^(b-1) .+ c
         )
     end
 end
@@ -283,7 +304,8 @@ function modifyLoss(state, reg::BetaReg)
     a = reg.a
     b = reg.b
     c = reg.c
-    return reg.lambda .* mapreduce(x -> (abs(x)+0.001)^a*(1.001-abs(x))^b+c*abs(x), +, state.realSpace, dims=(1,2,3))
+    m = reg.m[]
+    return reg.lambda .* mapreduce(x -> (abs(x)+0.001)^a*(m+0.001-abs(x))^b+c*abs(x), +, state.realSpace, dims=(1,2,3))
 end
 
 function manyLikeScal!(losses, x, y, z, adds, intens, recipSpace, h, k, l, recSupport, gh, gk, gl)

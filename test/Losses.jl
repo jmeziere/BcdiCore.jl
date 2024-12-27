@@ -92,6 +92,33 @@ function l2WithoutScaling(realSpace, intens, recSupport)
     return mapreduce((sqi,absr) -> (absr - sqi)^2, +, sqIntens, absRecipSpace)/length(intens)
 end
 
+function huberWithScaling(realSpace, intens, recSupport, delta)
+    recipSpace = zeros(typeof(realSpace[1]), 4,4,4)
+    s1 = size(intens,1)
+    s2 = size(intens,2)
+    s3 = size(intens,3)
+    for i in 0:s1-1
+    for j in 0:s2-1
+    for k in 0:s3-1
+        for l in 0:s1-1
+        for m in 0:s2-1
+        for n in 0:s3-1
+            recipSpace[i+1,j+1,k+1] += realSpace[l+1,m+1,n+1] * exp(-1im * 2 * pi * (i*l/s1+j*m/s2+k*n/s3))
+        end
+        end
+        end
+    end
+    end
+    end
+    absRecipSpace = abs.(recipSpace) .* recSupport
+    sqIntens = sqrt.(intens) .* recSupport
+    c = mapreduce((sqi,absr)-> sqi*absr, +, sqIntens, absRecipSpace)/mapreduce(x -> x^2, +, absRecipSpace)
+    return mapreduce(
+        (sqi,absr) -> abs(c*absr-sqi) <= delta ? (c*absr - sqi)^2 : 2*delta*(abs(c*absr-sqi)-delta/2), 
+        +, sqIntens, absRecipSpace
+    )/length(intens)
+end
+
 function huberWithoutScaling(realSpace, intens, recSupport, delta)
     recipSpace = zeros(typeof(realSpace[1]), 4,4,4)
     s1 = size(intens,1)

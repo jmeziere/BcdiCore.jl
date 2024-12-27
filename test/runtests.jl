@@ -306,6 +306,18 @@ include("Atomic.jl")
         @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(real.(state.deriv)), rDeriv, rtol=1e-6))
         @test all(isapprox.(Array(imag.(state.deriv)), iDeriv, rtol=1e-6))
+
+        # Test of Huber norm with scaling
+        tester = huberWithScaling(realSpace, intens, recSupport, delta)
+        rDeriv = ForwardDiff.gradient(rsp -> huberWithScaling(rsp .+ 1im .* imag.(realSpace), intens, recSupport, delta), real.(realSpace))
+        iDeriv = ForwardDiff.gradient(isp -> huberWithScaling(real.(realSpace) .+ 1im .* isp, intens, recSupport, delta), imag.(realSpace))
+
+        state = BcdiCore.TradState("Huber", true, cuRealSpace, cuIntens, cuRecSupport)
+        testee = BcdiCore.loss(state, true, true, false)
+
+        @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
+        @test all(isapprox.(Array(real.(state.deriv)), rDeriv, rtol=1e-6))
+        @test all(isapprox.(Array(imag.(state.deriv)), iDeriv, rtol=1e-6))
   
         # Test of Huber norm without scaling
         tester = huberWithoutScaling(realSpace, intens, recSupport, delta)
