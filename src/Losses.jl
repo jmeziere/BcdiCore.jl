@@ -95,6 +95,10 @@ function getPartial(state, loss::HuberLoss, c)
             abs(abs(rsp)-sqrt(i)) <= delta ? 2*(abs(rsp)-sqrt(i))+0.0*1im : 2*delta*sign(abs(rsp)-sqrt(i))+0.0*1im
         ) : 0.0 + 0.0*1im, state.working, state.intens, state.plan.tempSpace, state.recSupport
     ) 
+
+    loss.da .= mapreduce((rsp,w) -> abs(rsp)*real(w), +, state.plan.recipSpace, state.working)
+    loss.da .*= c ./ length(state.recipSpace)
+
     state.working .*= loss.a
     if state.scale
         state.working .= 

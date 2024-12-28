@@ -92,7 +92,7 @@ function l2WithoutScaling(realSpace, intens, recSupport)
     return mapreduce((sqi,absr) -> (absr - sqi)^2, +, sqIntens, absRecipSpace)/length(intens)
 end
 
-function huberWithScaling(realSpace, intens, recSupport, delta)
+function huberWithScaling(realSpace, intens, recSupport, delta, a)
     recipSpace = zeros(typeof(realSpace[1]), 4,4,4)
     s1 = size(intens,1)
     s2 = size(intens,2)
@@ -114,7 +114,7 @@ function huberWithScaling(realSpace, intens, recSupport, delta)
     sqIntens = sqrt.(intens) .* recSupport
     c = mapreduce((sqi,absr)-> sqi*absr, +, sqIntens, absRecipSpace)/mapreduce(x -> x^2, +, absRecipSpace)
     return mapreduce(
-        (sqi,absr) -> abs(c*absr-sqi) <= delta ? (c*absr - sqi)^2 : 2*delta*(abs(c*absr-sqi)-delta/2), 
+        (sqi,absr) -> abs(a[1]*c*absr-sqi) <= delta ? (a[1]*c*absr - sqi)^2 : 2*delta*(abs(a[1]*c*absr-sqi)-delta/2), 
         +, sqIntens, absRecipSpace
     )/length(intens)
 end

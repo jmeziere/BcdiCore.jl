@@ -308,16 +308,22 @@ include("Atomic.jl")
         @test all(isapprox.(Array(imag.(state.deriv)), iDeriv, rtol=1e-6))
 
         # Test of Huber norm with scaling
-        tester = huberWithScaling(realSpace, intens, recSupport, delta)
-        rDeriv = ForwardDiff.gradient(rsp -> huberWithScaling(rsp .+ 1im .* imag.(realSpace), intens, recSupport, delta), real.(realSpace))
-        iDeriv = ForwardDiff.gradient(isp -> huberWithScaling(real.(realSpace) .+ 1im .* isp, intens, recSupport, delta), imag.(realSpace))
+        hconst = [1.5]
+        tester = huberWithScaling(realSpace, intens, recSupport, delta, hconst)
+        rDeriv = ForwardDiff.gradient(rsp -> huberWithScaling(rsp .+ 1im .* imag.(realSpace), intens, recSupport, delta, hconst), real.(realSpace))
+        iDeriv = ForwardDiff.gradient(isp -> huberWithScaling(real.(realSpace) .+ 1im .* isp, intens, recSupport, delta, hconst), imag.(realSpace))
+        aDeriv = ForwardDiff.gradient(hconstd -> huberWithScaling(realSpace, intens, recSupport, delta, hconstd), hconst)
 
         state = BcdiCore.TradState("Huber", true, cuRealSpace, cuIntens, cuRecSupport)
+        state.loss.a .= hconst[1]
         testee = BcdiCore.loss(state, true, true, false)
 
         @test @CUDA.allowscalar isapprox(testee[1], tester, rtol=1e-6)
         @test all(isapprox.(Array(real.(state.deriv)), rDeriv, rtol=1e-6))
         @test all(isapprox.(Array(imag.(state.deriv)), iDeriv, rtol=1e-6))
+println(state.loss.da)
+println(aDeriv)
+        @test @CUDA.allowscalar isapprox(state.loss.da[1], aDeriv[1], rtol=1e-6)
   
         # Test of Huber norm without scaling
         tester = huberWithoutScaling(realSpace, intens, recSupport, delta)
